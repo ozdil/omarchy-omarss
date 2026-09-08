@@ -645,6 +645,26 @@ fn mark_article_read(target_id: &str) -> RssState {
     }
 }
 
+fn toggle_article_read(target_id: &str) -> RssState {
+    let feeds = load_feeds();
+    let mut articles = load_articles();
+    for a in &mut articles {
+        if a.id == target_id {
+            a.is_read = !a.is_read;
+        }
+    }
+    save_articles(&articles);
+    let unread = articles.iter().filter(|a| !a.is_read).count();
+
+    RssState {
+        total_articles: articles.len(),
+        unread_articles: unread,
+        total_feeds: feeds.len(),
+        feeds,
+        articles,
+    }
+}
+
 fn mark_all_articles_read() -> RssState {
     let feeds = load_feeds();
     let mut articles = load_articles();
@@ -741,6 +761,12 @@ fn main() {
 
     if args.len() >= 3 && args[1] == "--mark-read" {
         let state = mark_article_read(&args[2]);
+        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        return;
+    }
+
+    if args.len() >= 3 && args[1] == "--toggle-read" {
+        let state = toggle_article_read(&args[2]);
         println!("{}", serde_json::to_string_pretty(&state).unwrap());
         return;
     }

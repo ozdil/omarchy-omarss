@@ -197,27 +197,15 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(6)
 
-            Button {
-              implicitHeight: Style.space(30)
-              implicitWidth: Style.space(30)
-              padding: 0
-              text: ""
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.icon
-              ToolTip.visible: hovered
-              ToolTip.text: "Refresh Feeds"
+            PanelActionButton {
+              iconText: ""
+              tooltipText: "Refresh Feeds"
               onClicked: root.refreshFeeds()
             }
 
-            Button {
-              implicitHeight: Style.space(30)
-              implicitWidth: Style.space(30)
-              padding: 0
-              text: "✓"
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.icon
-              ToolTip.visible: hovered
-              ToolTip.text: "Mark All Read"
+            PanelActionButton {
+              iconText: "✓"
+              tooltipText: "Mark All Read"
               onClicked: root.markAllAsRead()
             }
           }
@@ -500,7 +488,7 @@ Panel {
                       cursorShape: Qt.PointingHandCursor
                       onClicked: {
                         if (art && art.id) {
-                          root.sendCmd("--mark-read", art.id)
+                          root.sendCmd("--toggle-read", art.id)
                         }
                       }
                     }
@@ -675,13 +663,10 @@ Panel {
                   }
                 }
 
-                Button {
-                  implicitHeight: Style.space(28)
-                  implicitWidth: Style.space(28)
-                  padding: 0
-                  text: "✕"
-                  ToolTip.visible: hovered
-                  ToolTip.text: "Unsubscribe Feed"
+                PanelActionButton {
+                  iconText: "✕"
+                  tooltipText: "Unsubscribe Feed"
+                  hoverColor: Color.urgent
                   onClicked: {
                     if (feedItem && feedItem.url) {
                       root.sendCmd("--remove-feed", feedItem.url)
