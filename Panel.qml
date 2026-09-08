@@ -49,6 +49,20 @@ Panel {
     root.sendCmd("--mark-all-read")
   }
 
+  function isLinuxArticle(art) {
+    if (!art) return false
+    var cat = String(art.category || "")
+    var name = String(art.feed_name || "")
+    return cat.indexOf("Linux") !== -1 || cat.indexOf("Kernel") !== -1 || cat.indexOf("Distro") !== -1 || name === "Phoronix" || name === "LWN.net" || name === "It's FOSS" || name === "OMG! Linux" || name === "Linux Today" || name === "DistroWatch" || name === "Linux Magazine" || name === "Arch Linux"
+  }
+
+  function isGamingArticle(art) {
+    if (!art) return false
+    var cat = String(art.category || "")
+    var name = String(art.feed_name || "")
+    return cat.indexOf("Gaming") !== -1 || cat.indexOf("Steam") !== -1 || cat.indexOf("Deck") !== -1 || cat.indexOf("Epic") !== -1 || name === "GamingOnLinux" || name === "Steam Official" || name === "Steam Deck HQ" || name === "Boiling Steam" || name === "Epic Games PC"
+  }
+
   function isTrArticle(art) {
     if (!art) return false
     var cat = String(art.category || "")
@@ -57,7 +71,7 @@ Panel {
   }
 
   function isGlobalArticle(art) {
-    return !root.isTrArticle(art)
+    return !root.isTrArticle(art) && !root.isLinuxArticle(art) && !root.isGamingArticle(art)
   }
 
   function getCountForRegion(reg) {
@@ -66,7 +80,11 @@ Panel {
     if (root.activeTab === 0) {
       list = list.filter(function(a) { return !a.is_read })
     }
-    if (reg === "tr") {
+    if (reg === "linux") {
+      return list.filter(function(a) { return root.isLinuxArticle(a) }).length
+    } else if (reg === "gaming") {
+      return list.filter(function(a) { return root.isGamingArticle(a) }).length
+    } else if (reg === "tr") {
       return list.filter(function(a) { return root.isTrArticle(a) }).length
     } else if (reg === "global") {
       return list.filter(function(a) { return root.isGlobalArticle(a) }).length
@@ -80,7 +98,11 @@ Panel {
     if (root.activeTab === 0) {
       list = list.filter(function(a) { return !a.is_read })
     }
-    if (root.selectedRegion === "tr") {
+    if (root.selectedRegion === "linux") {
+      list = list.filter(function(a) { return root.isLinuxArticle(a) })
+    } else if (root.selectedRegion === "gaming") {
+      list = list.filter(function(a) { return root.isGamingArticle(a) })
+    } else if (root.selectedRegion === "tr") {
       list = list.filter(function(a) { return root.isTrArticle(a) })
     } else if (root.selectedRegion === "global") {
       list = list.filter(function(a) { return root.isGlobalArticle(a) })
@@ -389,14 +411,16 @@ Panel {
           spacing: Style.space(8)
           visible: root.activeTab === 0 || root.activeTab === 1
 
-          // Region Filter Pill Bar (Tümü | Türkiye | Dünya)
+          // Region Filter Pill Bar (Tümü | Linux | Gaming | Türkiye | Dünya)
           RowLayout {
             width: parent.width
-            spacing: Style.space(6)
+            spacing: Style.space(4)
 
             Repeater {
               model: [
                 { id: "all", label: "Tümü", count: root.getCountForRegion("all") },
+                { id: "linux", label: "Linux", count: root.getCountForRegion("linux") },
+                { id: "gaming", label: "Gaming", count: root.getCountForRegion("gaming") },
                 { id: "tr", label: "Türkiye", count: root.getCountForRegion("tr") },
                 { id: "global", label: "Dünya", count: root.getCountForRegion("global") }
               ]
@@ -489,7 +513,7 @@ Panel {
 
           // Articles Repeater
           Repeater {
-            model: root.getFilteredArticles().slice(0, 50)
+            model: root.getFilteredArticles().slice(0, 80)
             delegate: BorderSurface {
               id: artCard
               width: parent.width

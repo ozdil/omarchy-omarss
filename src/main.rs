@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-const MAX_ARTICLES_TOTAL: usize = 200;
+const MAX_ARTICLES_TOTAL: usize = 300;
 const MAX_FEED_BODY_BYTES: usize = 524288; // 512 KiB
-const FEED_TIMEOUT_SECS: u64 = 5;
-const WHOLE_REFRESH_TIMEOUT_SECS: u64 = 20;
+const FEED_TIMEOUT_SECS: u64 = 4;
+const WHOLE_REFRESH_TIMEOUT_SECS: u64 = 30;
 
 #[repr(C)]
 struct PollFd {
@@ -198,6 +198,114 @@ fn get_state_dir() -> PathBuf {
 
 fn default_feeds() -> Vec<Feed> {
     vec![
+        // --- Linux & Açık Kaynak Sistemler ---
+        Feed {
+            url: "https://www.phoronix.com/rss.php".to_string(),
+            name: "Phoronix".to_string(),
+            category: "Linux & Donanım".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://lwn.net/headlines/rss".to_string(),
+            name: "LWN.net".to_string(),
+            category: "Linux Kernel".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "🐧".to_string(),
+        },
+        Feed {
+            url: "https://news.itsfoss.com/rss/".to_string(),
+            name: "It's FOSS".to_string(),
+            category: "Linux & FOSS".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://www.omglinux.com/feed/".to_string(),
+            name: "OMG! Linux".to_string(),
+            category: "Linux Desktop".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://www.linuxtoday.com/feed/".to_string(),
+            name: "Linux Today".to_string(),
+            category: "Linux Haber".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "📰".to_string(),
+        },
+        Feed {
+            url: "https://distrowatch.com/news/headline.xml".to_string(),
+            name: "DistroWatch".to_string(),
+            category: "Linux Distro".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "󰣇".to_string(),
+        },
+        Feed {
+            url: "https://www.linux-magazine.com/rss/feed/lmi_news".to_string(),
+            name: "Linux Magazine".to_string(),
+            category: "Linux Dergi".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "📑".to_string(),
+        },
+        Feed {
+            url: "https://archlinux.org/feeds/news/".to_string(),
+            name: "Arch Linux".to_string(),
+            category: "Linux Distro".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "󰣇".to_string(),
+        },
+
+        // --- Oyun, Steam, Steam Deck & Epic Games ---
+        Feed {
+            url: "https://www.gamingonlinux.com/article_rss.php".to_string(),
+            name: "GamingOnLinux".to_string(),
+            category: "Linux Gaming".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://store.steampowered.com/feeds/news.xml".to_string(),
+            name: "Steam Official".to_string(),
+            category: "Steam & Valve".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://steamdeckhq.com/feed/".to_string(),
+            name: "Steam Deck HQ".to_string(),
+            category: "Steam Deck".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "󰊴".to_string(),
+        },
+        Feed {
+            url: "https://boilingsteam.com/feed/".to_string(),
+            name: "Boiling Steam".to_string(),
+            category: "Linux Gaming".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "♨".to_string(),
+        },
+        Feed {
+            url: "https://www.reddit.com/r/EpicGamesPC/.rss".to_string(),
+            name: "Epic Games PC".to_string(),
+            category: "Epic Games".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "⚡".to_string(),
+        },
+
         // --- Türkiye Önde Gelen Teknoloji ve Bilim Sayfaları ---
         Feed {
             url: "https://webrazzi.com/feed".to_string(),
@@ -280,22 +388,6 @@ fn default_feeds() -> Vec<Feed> {
             enabled: true,
             last_fetched: "Pending".to_string(),
             icon: "🚀".to_string(),
-        },
-        Feed {
-            url: "https://www.phoronix.com/rss.php".to_string(),
-            name: "Phoronix".to_string(),
-            category: "Linux & Donanım".to_string(),
-            enabled: true,
-            last_fetched: "Pending".to_string(),
-            icon: "".to_string(),
-        },
-        Feed {
-            url: "https://archlinux.org/feeds/news/".to_string(),
-            name: "Arch Linux".to_string(),
-            category: "Linux Distro".to_string(),
-            enabled: true,
-            last_fetched: "Pending".to_string(),
-            icon: "󰣇".to_string(),
         },
         Feed {
             url: "https://blog.rust-lang.org/feed.xml".to_string(),
