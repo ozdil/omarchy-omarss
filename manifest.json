@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "ozdil.omarss",
+  "name": "OmaRSS",
+  "version": "1.0.0",
+  "author": "Ozan Özdil (ozdil)",
+  "license": "MIT",
+  "description": "Ultra-fast, native, lightweight RSS & Atom feed reader and notification hub for Omarchy written in Rust.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaRSS",
+    "description": "Native RSS/Atom reader and feed monitor with unread alerts.",
+    "category": "Internet",
+    "defaultSection": "right",
+    "aliases": ["rss", "omarss", "feed", "reader", "atom", "news-reader"],
+    "allowMultiple": false
+  }
+}
