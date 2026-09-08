@@ -2,16 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::Read;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-const MAX_ARTICLES_TOTAL: usize = 80;
+const MAX_ARTICLES_TOTAL: usize = 200;
 const MAX_FEED_BODY_BYTES: usize = 524288; // 512 KiB
-const FEED_TIMEOUT_SECS: u64 = 3;
-const WHOLE_REFRESH_TIMEOUT_SECS: u64 = 6;
+const FEED_TIMEOUT_SECS: u64 = 5;
+const WHOLE_REFRESH_TIMEOUT_SECS: u64 = 20;
 
 #[repr(C)]
 struct PollFd {
@@ -44,6 +45,8 @@ pub struct Article {
     pub id: String,
     pub feed_url: String,
     pub feed_name: String,
+    #[serde(default)]
+    pub category: String,
     pub title: String,
     pub link: String,
     pub date: String,
@@ -130,6 +133,21 @@ fn decode_html_entities(s: &str) -> String {
                         "copy" => { out.push('©'); continue; }
                         "reg" => { out.push('®'); continue; }
                         "trade" => { out.push('™'); continue; }
+                        "rsquo" | "lsquo" => { out.push('’'); continue; }
+                        "rdquo" | "ldquo" => { out.push('"'); continue; }
+                        "ndash" => { out.push('–'); continue; }
+                        "mdash" => { out.push('—'); continue; }
+                        "hellip" => { out.push('…'); continue; }
+                        "ccedil" => { out.push('ç'); continue; }
+                        "Ccedil" => { out.push('Ç'); continue; }
+                        "ouml" => { out.push('ö'); continue; }
+                        "Ouml" => { out.push('Ö'); continue; }
+                        "uuml" => { out.push('ü'); continue; }
+                        "Uuml" => { out.push('Ü'); continue; }
+                        "bull" => { out.push('•'); continue; }
+                        "deg" => { out.push('°'); continue; }
+                        "euro" => { out.push('€'); continue; }
+                        "pound" => { out.push('£'); continue; }
                         _ => {}
                     }
                 }
@@ -180,34 +198,109 @@ fn get_state_dir() -> PathBuf {
 
 fn default_feeds() -> Vec<Feed> {
     vec![
+        // --- Türkiye Önde Gelen Teknoloji ve Bilim Sayfaları ---
         Feed {
-            url: "https://archlinux.org/feeds/news/".to_string(),
-            name: "Arch Linux".to_string(),
-            category: "Distro".to_string(),
+            url: "https://webrazzi.com/feed".to_string(),
+            name: "Webrazzi".to_string(),
+            category: "TR Teknoloji".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "󰣇".to_string(),
+            icon: "".to_string(),
         },
         Feed {
-            url: "https://news.ycombinator.com/rss".to_string(),
-            name: "Hacker News".to_string(),
-            category: "Tech".to_string(),
+            url: "https://shiftdelete.net/feed".to_string(),
+            name: "ShiftDelete".to_string(),
+            category: "TR Teknoloji".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "".to_string(),
+            icon: "".to_string(),
         },
         Feed {
-            url: "https://www.phoronix.com/rss.php".to_string(),
-            name: "Phoronix".to_string(),
-            category: "Hardware".to_string(),
+            url: "https://www.donanimhaber.com/rss/tum/".to_string(),
+            name: "DonanımHaber".to_string(),
+            category: "TR Donanım".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
             icon: "".to_string(),
         },
         Feed {
+            url: "https://www.log.com.tr/feed/".to_string(),
+            name: "LOG".to_string(),
+            category: "TR Teknoloji".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://www.webtekno.com/rss.xml".to_string(),
+            name: "Webtekno".to_string(),
+            category: "TR Teknoloji".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://evrimagaci.org/rss.xml".to_string(),
+            name: "Evrim Ağacı".to_string(),
+            category: "TR Bilim".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "󰄛".to_string(),
+        },
+
+        // --- Dünyada Önde Gelen Teknoloji ve Yazılım Sayfaları ---
+        Feed {
+            url: "https://news.ycombinator.com/rss".to_string(),
+            name: "Hacker News".to_string(),
+            category: "Global Tech".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://feeds.arstechnica.com/arstechnica/index".to_string(),
+            name: "Ars Technica".to_string(),
+            category: "Global Tech".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "📰".to_string(),
+        },
+        Feed {
+            url: "https://www.theverge.com/rss/index.xml".to_string(),
+            name: "The Verge".to_string(),
+            category: "Global Tech".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "⚡".to_string(),
+        },
+        Feed {
+            url: "https://techcrunch.com/feed/".to_string(),
+            name: "TechCrunch".to_string(),
+            category: "Global Tech".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "🚀".to_string(),
+        },
+        Feed {
+            url: "https://www.phoronix.com/rss.php".to_string(),
+            name: "Phoronix".to_string(),
+            category: "Linux & Donanım".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "".to_string(),
+        },
+        Feed {
+            url: "https://archlinux.org/feeds/news/".to_string(),
+            name: "Arch Linux".to_string(),
+            category: "Linux Distro".to_string(),
+            enabled: true,
+            last_fetched: "Pending".to_string(),
+            icon: "󰣇".to_string(),
+        },
+        Feed {
             url: "https://blog.rust-lang.org/feed.xml".to_string(),
             name: "Rust Blog".to_string(),
-            category: "Dev".to_string(),
+            category: "Yazılım Dev".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
             icon: "".to_string(),
@@ -218,8 +311,19 @@ fn default_feeds() -> Vec<Feed> {
 fn load_feeds() -> Vec<Feed> {
     let feeds_path = get_state_dir().join("feeds.json");
     if let Ok(content) = fs::read_to_string(&feeds_path) {
-        if let Ok(feeds) = serde_json::from_str::<Vec<Feed>>(&content) {
+        if let Ok(mut feeds) = serde_json::from_str::<Vec<Feed>>(&content) {
             if !feeds.is_empty() {
+                let defs = default_feeds();
+                let mut changed = false;
+                for def in defs {
+                    if !feeds.iter().any(|f| f.url == def.url) {
+                        feeds.push(def);
+                        changed = true;
+                    }
+                }
+                if changed {
+                    save_feeds(&feeds);
+                }
                 return feeds;
             }
         }
@@ -232,11 +336,22 @@ fn load_feeds() -> Vec<Feed> {
 fn save_feeds(feeds: &[Feed]) {
     let dir = get_state_dir();
     let _ = fs::create_dir_all(&dir);
+    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
     let feeds_path = dir.join("feeds.json");
     if let Ok(json) = serde_json::to_string_pretty(feeds) {
-        let tmp = dir.join("feeds.json.tmp");
-        if fs::write(&tmp, json).is_ok() {
-            let _ = fs::rename(tmp, feeds_path);
+        let tmp = dir.join(".tmp_feeds.json");
+        if let Ok(mut file) = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)
+        {
+            use std::io::Write;
+            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
+                drop(file);
+                let _ = fs::rename(tmp, feeds_path);
+            }
         }
     }
 }
@@ -254,18 +369,31 @@ fn load_articles() -> Vec<Article> {
 fn save_articles(articles: &[Article]) {
     let dir = get_state_dir();
     let _ = fs::create_dir_all(&dir);
+    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
     let art_path = dir.join("articles.json");
     if let Ok(json) = serde_json::to_string_pretty(articles) {
-        let tmp = dir.join("articles.json.tmp");
-        if fs::write(&tmp, json).is_ok() {
-            let _ = fs::rename(tmp, art_path);
+        let tmp = dir.join(".tmp_articles.json");
+        if let Ok(mut file) = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)
+        {
+            use std::io::Write;
+            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
+                drop(file);
+                let _ = fs::rename(tmp, art_path);
+            }
         }
     }
 }
 
 fn reap_process_group(mut child: std::process::Child, pid: i32) {
+    // SAFETY: pid is a valid child process group ID spawned via process_group(0).
     unsafe { kill(-pid, 15); }
-    std::thread::sleep(Duration::from_millis(5));
+    std::thread::sleep(Duration::from_millis(10));
+    // SAFETY: SIGKILL guarantees all processes in the isolated process group are reaped.
     unsafe { kill(-pid, 9); }
     let _ = child.wait();
 }
@@ -390,8 +518,7 @@ fn extract_xml_tag(xml: &str, tag: &str) -> String {
             let content_start = &after_open[tag_end + 1..];
             if let Some(end_pos) = content_start.find(&close_tag) {
                 let inner = &content_start[..end_pos];
-                if inner.contains("<![CDATA[") {
-                    let cdata_start = inner.find("<![CDATA[").unwrap();
+                if let Some(cdata_start) = inner.find("<![CDATA[") {
                     let after_cdata = &inner[cdata_start + 9..];
                     if let Some(cdata_end) = after_cdata.find("]]>") {
                         return after_cdata[..cdata_end].to_string();
@@ -464,6 +591,7 @@ fn parse_feed_xml(feed: &Feed, xml: &str) -> Vec<Article> {
                         id,
                         feed_url: feed.url.clone(),
                         feed_name: feed.name.clone(),
+                        category: feed.category.clone(),
                         title: clean_title,
                         link: clean_link,
                         date: clean_date,
@@ -475,7 +603,7 @@ fn parse_feed_xml(feed: &Feed, xml: &str) -> Vec<Article> {
             } else {
                 break;
             }
-            if articles.len() >= 25 {
+            if articles.len() >= 15 {
                 break;
             }
         }
@@ -505,6 +633,7 @@ fn parse_feed_xml(feed: &Feed, xml: &str) -> Vec<Article> {
                         id,
                         feed_url: feed.url.clone(),
                         feed_name: feed.name.clone(),
+                        category: feed.category.clone(),
                         title: clean_title,
                         link: clean_link,
                         date: clean_date,
@@ -516,7 +645,7 @@ fn parse_feed_xml(feed: &Feed, xml: &str) -> Vec<Article> {
             } else {
                 break;
             }
-            if articles.len() >= 25 {
+            if articles.len() >= 15 {
                 break;
             }
         }
@@ -554,7 +683,7 @@ fn refresh_all_feeds() -> RssState {
     }
 
     let deadline = Instant::now() + Duration::from_secs(WHOLE_REFRESH_TIMEOUT_SECS);
-    let mut new_articles = Vec::new();
+    let mut per_feed_articles: Vec<Vec<Article>> = Vec::new();
 
     for feed in &mut feeds {
         if !feed.enabled || Instant::now() >= deadline {
@@ -565,17 +694,30 @@ fn refresh_all_feeds() -> RssState {
             let parsed = parse_feed_xml(feed, &body);
             if !parsed.is_empty() {
                 feed.last_fetched = "Just now".to_string();
+                let mut feed_arts = Vec::new();
                 for mut art in parsed {
                     if read_map.contains(&art.id) {
                         art.is_read = true;
                     }
-                    new_articles.push(art);
+                    feed_arts.push(art);
                 }
+                per_feed_articles.push(feed_arts);
             } else {
                 feed.last_fetched = "Parsed 0".to_string();
             }
         } else {
             feed.last_fetched = "Timeout / Error".to_string();
+        }
+    }
+
+    // Round-robin interleave articles across all feeds for diverse, balanced representation
+    let mut new_articles = Vec::new();
+    let max_feed_len = per_feed_articles.iter().map(|v| v.len()).max().unwrap_or(0);
+    for i in 0..max_feed_len {
+        for feed_arts in &per_feed_articles {
+            if i < feed_arts.len() {
+                new_articles.push(feed_arts[i].clone());
+            }
         }
     }
 
@@ -592,6 +734,14 @@ fn refresh_all_feeds() -> RssState {
     for a in existing_articles {
         if seen_ids.insert(a.id.clone()) && final_articles.len() < MAX_ARTICLES_TOTAL {
             final_articles.push(a);
+        }
+    }
+
+    for a in &mut final_articles {
+        if a.category.is_empty() {
+            if let Some(f) = feeds.iter().find(|feed| feed.url == a.feed_url) {
+                a.category = f.category.clone();
+            }
         }
     }
 
@@ -796,6 +946,14 @@ fn main() {
         return;
     }
 
+    if args.iter().any(|a| a == "--reset-feeds") {
+        let feeds = default_feeds();
+        save_feeds(&feeds);
+        let state = refresh_all_feeds();
+        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        return;
+    }
+
     let state = if args.iter().any(|a| a == "--refresh") {
         refresh_all_feeds()
     } else {
@@ -837,5 +995,107 @@ fn main() {
     for a in state.articles.iter().take(20) {
         let read_badge = if a.is_read { " " } else { "●" };
         println!("{} {:<18} {:<12} {:<45}", read_badge, a.feed_name, a.date, a.title);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_html_entities() {
+        assert_eq!(decode_html_entities("&amp; &quot; &apos; &lt; &gt;"), "& \" ' < >");
+        assert_eq!(decode_html_entities("Türkiye&#8217;nin"), "Türkiye’nin");
+        assert_eq!(decode_html_entities("&ccedil;&ouml;&uuml;&Ccedil;&Ouml;&Uuml;"), "çöüÇÖÜ");
+        assert_eq!(decode_html_entities("Sam Altman&#8217;a"), "Sam Altman’a");
+        assert_eq!(decode_html_entities("test &ndash; test"), "test – test");
+        assert_eq!(decode_html_entities("price: &euro;50"), "price: €50");
+    }
+
+    #[test]
+    fn test_strip_html_and_decode() {
+        let input = "<p>Hello <b>World</b> &amp; <i>Rust</i>!</p>";
+        assert_eq!(strip_html_and_decode(input, 50), "Hello World & Rust!");
+    }
+
+    #[test]
+    fn test_extract_xml_tag() {
+        let xml = "<item><title><![CDATA[Test Title With CDATA]]></title><link>https://example.com</link></item>";
+        assert_eq!(extract_xml_tag(xml, "title"), "Test Title With CDATA");
+        assert_eq!(extract_xml_tag(xml, "link"), "https://example.com");
+    }
+
+    #[test]
+    fn test_default_feeds_validity() {
+        let feeds = default_feeds();
+        assert!(feeds.len() >= 10);
+        for f in &feeds {
+            assert!(f.url.starts_with("https://") || f.url.starts_with("http://"));
+            assert!(!f.name.is_empty());
+            assert!(!f.category.is_empty());
+            assert!(!f.icon.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_parse_feed_xml_rss2() {
+        let feed = Feed {
+            url: "https://example.com/rss".to_string(),
+            name: "Webrazzi".to_string(),
+            category: "TR Teknoloji".to_string(),
+            enabled: true,
+            last_fetched: "Never".to_string(),
+            icon: "".to_string(),
+        };
+        let xml = r#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Yeni Yapay Zeka Modeli Tanıtıldı</title>
+                    <link>https://example.com/ai-model</link>
+                    <pubDate>Tue, 08 Sep 2026 12:00:00 GMT</pubDate>
+                    <description>Yeni model özellikleri duyuruldu.</description>
+                </item>
+            </channel>
+        </rss>"#;
+        let articles = parse_feed_xml(&feed, xml);
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].title, "Yeni Yapay Zeka Modeli Tanıtıldı");
+        assert_eq!(articles[0].link, "https://example.com/ai-model");
+        assert_eq!(articles[0].category, "TR Teknoloji");
+        assert_eq!(articles[0].feed_name, "Webrazzi");
+    }
+
+    #[test]
+    fn test_parse_feed_xml_atom() {
+        let feed = Feed {
+            url: "https://example.com/atom".to_string(),
+            name: "The Verge".to_string(),
+            category: "Global Tech".to_string(),
+            enabled: true,
+            last_fetched: "Never".to_string(),
+            icon: "⚡".to_string(),
+        };
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <title>Global Tech Breakthrough</title>
+                <link rel="alternate" type="text/html" href="https://example.com/breakthrough"/>
+                <published>2026-09-08T10:00:00Z</published>
+                <summary>A groundbreaking achievement in computing.</summary>
+            </entry>
+        </feed>"#;
+        let articles = parse_feed_xml(&feed, xml);
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].title, "Global Tech Breakthrough");
+        assert_eq!(articles[0].link, "https://example.com/breakthrough");
+        assert_eq!(articles[0].category, "Global Tech");
+    }
+
+    #[test]
+    fn test_format_relative_date() {
+        assert_eq!(format_relative_date("2026-09-08T12:30:00Z"), "2026-09-08");
+        assert_eq!(format_relative_date("Tue, 08 Sep 2026 14:30:00 +0000"), "08 Sep 2026");
+        assert_eq!(format_relative_date(""), "Recent");
     }
 }

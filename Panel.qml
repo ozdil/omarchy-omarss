@@ -21,6 +21,7 @@ Panel {
   property var articles: []
   property var feeds: []
   property int activeTab: 0 // 0: Unread, 1: All, 2: Feeds
+  property string selectedRegion: "all" // "all", "tr", "global"
   property bool isRefreshing: false
 
   function resolveEnginePath() {
@@ -48,12 +49,43 @@ Panel {
     root.sendCmd("--mark-all-read")
   }
 
+  function isTrArticle(art) {
+    if (!art) return false
+    var cat = String(art.category || "")
+    var name = String(art.feed_name || "")
+    return cat.indexOf("TR") !== -1 || cat.indexOf("Türkiye") !== -1 || name === "Webrazzi" || name === "ShiftDelete" || name === "DonanımHaber" || name === "LOG" || name === "Webtekno" || name === "Evrim Ağacı"
+  }
+
+  function isGlobalArticle(art) {
+    return !root.isTrArticle(art)
+  }
+
+  function getCountForRegion(reg) {
+    if (!root.articles) return 0
+    var list = root.articles
+    if (root.activeTab === 0) {
+      list = list.filter(function(a) { return !a.is_read })
+    }
+    if (reg === "tr") {
+      return list.filter(function(a) { return root.isTrArticle(a) }).length
+    } else if (reg === "global") {
+      return list.filter(function(a) { return root.isGlobalArticle(a) }).length
+    }
+    return list.length
+  }
+
   function getFilteredArticles() {
     if (!root.articles) return []
+    var list = root.articles
     if (root.activeTab === 0) {
-      return root.articles.filter(function(a) { return !a.is_read })
+      list = list.filter(function(a) { return !a.is_read })
     }
-    return root.articles
+    if (root.selectedRegion === "tr") {
+      list = list.filter(function(a) { return root.isTrArticle(a) })
+    } else if (root.selectedRegion === "global") {
+      list = list.filter(function(a) { return root.isGlobalArticle(a) })
+    }
+    return list
   }
 
   IpcHandler {
@@ -357,6 +389,62 @@ Panel {
           spacing: Style.space(8)
           visible: root.activeTab === 0 || root.activeTab === 1
 
+          // Region Filter Pill Bar (Tümü | Türkiye | Dünya)
+          RowLayout {
+            width: parent.width
+            spacing: Style.space(6)
+
+            Repeater {
+              model: [
+                { id: "all", label: "Tümü", count: root.getCountForRegion("all") },
+                { id: "tr", label: "Türkiye", count: root.getCountForRegion("tr") },
+                { id: "global", label: "Dünya", count: root.getCountForRegion("global") }
+              ]
+
+              delegate: BorderSurface {
+                id: pillSurface
+                Layout.fillWidth: true
+                implicitHeight: Style.space(26)
+                radius: Style.cornerRadius
+                readonly property bool active: root.selectedRegion === modelData.id
+                color: active ? Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent) : Style.controlFill(false, pillMouse.containsMouse, Color.foreground, Color.accent)
+                borderSpec: Border.controlSpec(active ? "active" : "normal", Color.foreground, Color.accent)
+
+                MouseArea {
+                  id: pillMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.selectedRegion = modelData.id
+                }
+
+                Row {
+                  anchors.centerIn: parent
+                  spacing: Style.space(4)
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: modelData.label
+                    color: pillSurface.active ? Color.accent : Color.foreground
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.caption
+                    font.bold: pillSurface.active
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: "(" + modelData.count + ")"
+                    color: pillSurface.active ? Color.accent : Color.muted
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.caption - 1
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+              }
+            }
+          }
+
           // Empty State
           BorderSurface {
             width: parent.width
@@ -401,7 +489,7 @@ Panel {
 
           // Articles Repeater
           Repeater {
-            model: root.getFilteredArticles().slice(0, 25)
+            model: root.getFilteredArticles().slice(0, 50)
             delegate: BorderSurface {
               id: artCard
               width: parent.width
@@ -452,6 +540,24 @@ Panel {
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.caption - 1
                       font.bold: true
+                    }
+                  }
+
+                  Rectangle {
+                    implicitHeight: Style.space(18)
+                    implicitWidth: artCatText.implicitWidth + Style.space(8)
+                    radius: Style.space(4)
+                    color: Qt.rgba(0, 0, 0, 0.08)
+                    visible: art && art.category && art.category.length > 0
+
+                    Text {
+                      id: artCatText
+                      anchors.centerIn: parent
+                      textFormat: Text.PlainText
+                      text: art ? String(art.category) : ""
+                      color: Color.muted
+                      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                      font.pixelSize: Style.font.caption - 2
                     }
                   }
 
@@ -569,10 +675,21 @@ Panel {
             }
           }
 
-          PanelSectionHeader {
-            text: "SUBSCRIBED FEEDS"
-            foreground: root.bar ? root.bar.foreground : Color.foreground
-            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+          RowLayout {
+            width: parent.width
+
+            PanelSectionHeader {
+              text: "SUBSCRIBED FEEDS"
+              foreground: root.bar ? root.bar.foreground : Color.foreground
+              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              Layout.fillWidth: true
+            }
+
+            PanelActionButton {
+              iconText: "↺"
+              tooltipText: "Reset All Feeds to Defaults"
+              onClicked: root.sendCmd("--reset-feeds")
+            }
           }
 
           Repeater {
