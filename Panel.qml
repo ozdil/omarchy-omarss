@@ -302,8 +302,10 @@ Panel {
               Rectangle {
                 width: badgeText0.implicitWidth + Style.space(8)
                 height: Style.space(16)
-                radius: Style.space(8)
-                color: root.activeTab === 0 ? Qt.rgba(0,0,0,0.2) : (root.unreadArticles > 0 ? "#22c55e" : Color.muted)
+                radius: Style.cornerRadius
+                color: root.activeTab === 0 ? Qt.rgba(0,0,0,0.2) : Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
+                border.color: root.activeTab === 0 ? "transparent" : Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.4)
+                border.width: 1
                 anchors.verticalCenter: parent.verticalCenter
 
                 Text {
@@ -311,7 +313,7 @@ Panel {
                   anchors.centerIn: parent
                   textFormat: Text.PlainText
                   text: String(root.unreadArticles)
-                  color: "#ffffff"
+                  color: root.activeTab === 0 ? (root.bar ? root.bar.background : Color.background) : (root.bar ? root.bar.foreground : Color.foreground)
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.caption - 1
                   font.bold: true
@@ -552,7 +554,7 @@ Panel {
                   Rectangle {
                     implicitHeight: Style.space(18)
                     implicitWidth: feedBadgeText.implicitWidth + Style.space(10)
-                    radius: Style.space(4)
+                    radius: Style.cornerRadius
                     color: Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
 
                     Text {
@@ -570,7 +572,7 @@ Panel {
                   Rectangle {
                     implicitHeight: Style.space(18)
                     implicitWidth: artCatText.implicitWidth + Style.space(8)
-                    radius: Style.space(4)
+                    radius: Style.cornerRadius
                     color: Qt.rgba(0, 0, 0, 0.08)
                     visible: art && art.category && art.category.length > 0
 
@@ -599,15 +601,17 @@ Panel {
                   Rectangle {
                     implicitHeight: Style.space(18)
                     implicitWidth: statusText.implicitWidth + Style.space(8)
-                    radius: Style.space(4)
-                    color: art && art.is_read ? Qt.rgba(0,0,0,0.1) : Qt.rgba(34/255, 197/255, 94/255, 0.15)
+                    radius: Style.cornerRadius
+                    color: art && art.is_read ? Qt.rgba(0,0,0,0.1) : Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
+                    border.color: art && art.is_read ? "transparent" : Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.4)
+                    border.width: 1
 
                     Text {
                       id: statusText
                       anchors.centerIn: parent
                       textFormat: Text.PlainText
-                      text: art && art.is_read ? "READ" : "NEW"
-                      color: art && art.is_read ? Color.muted : "#22c55e"
+                      text: art && art.is_read ? "READ" : "● NEW"
+                      color: art && art.is_read ? Color.muted : (root.bar ? root.bar.foreground : Color.foreground)
                       font.family: root.bar ? root.bar.fontFamily : Style.font.family
                       font.pixelSize: Style.font.caption - 1
                       font.bold: true
@@ -766,7 +770,7 @@ Panel {
                     Rectangle {
                       implicitHeight: Style.space(16)
                       implicitWidth: catText.implicitWidth + Style.space(6)
-                      radius: Style.space(4)
+                      radius: Style.cornerRadius
                       color: Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
                       anchors.verticalCenter: parent.verticalCenter
 
