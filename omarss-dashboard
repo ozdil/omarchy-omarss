@@ -1,3 +1,10 @@
 #!/usr/bin/env bash
+# Prefer native Quickshell UI if available
+if [[ "${1:-}" != "--cli" ]] && command -v quickshell >/dev/null 2>&1; then
+    if quickshell ipc -p /usr/share/omarchy/shell call ozdil.omarss toggle >/dev/null 2>&1; then
+        exit 0
+    fi
+fi
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec "$DIR/omarss-engine" "$@"
