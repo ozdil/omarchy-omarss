@@ -23,6 +23,7 @@ Panel {
   property int activeTab: 0 // 0: Unread, 1: All, 2: Feeds
   property string selectedRegion: "all" // "all", "tr", "global"
   property bool isRefreshing: false
+  property bool compactMode: false
 
   function resolveEnginePath() {
     return Qt.resolvedUrl("omarss-engine").toString().replace(/^file:\/\//, "")
@@ -200,19 +201,55 @@ Panel {
     bar: root.bar
     open: root.opened
     contentWidth: panel.fittedContentWidth(Style.space(480))
-    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(620))
+    contentHeight: panel.fittedContentHeight(headerColumn.implicitHeight + scrollContent.implicitHeight + Style.space(16), Style.space(640))
 
-    ScrollView {
-      id: scrollArea
+    Keys.onPressed: function(event) {
+      if (newFeedInput && newFeedInput.activeFocus) return;
+      if (!scrollArea.contentItem) return;
+      var step = Style.space(220);
+      if (event.key === Qt.Key_PageDown || (event.key === Qt.Key_Space && !(event.modifiers & Qt.ShiftModifier))) {
+        scrollArea.contentItem.contentY = Math.min(
+          scrollArea.contentItem.contentHeight - scrollArea.height,
+          scrollArea.contentItem.contentY + step
+        );
+        event.accepted = true;
+      } else if (event.key === Qt.Key_PageUp || (event.key === Qt.Key_Space && (event.modifiers & Qt.ShiftModifier))) {
+        scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentY - step);
+        event.accepted = true;
+      } else if (event.key === Qt.Key_Home) {
+        scrollArea.contentItem.contentY = 0;
+        event.accepted = true;
+      } else if (event.key === Qt.Key_End) {
+        scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentHeight - scrollArea.height);
+        event.accepted = true;
+      }
+    }
+
+    Connections {
+      target: root
+      function onActiveTabChanged() {
+        if (scrollArea.contentItem) {
+          scrollArea.contentItem.contentY = 0
+        }
+      }
+      function onSelectedRegionChanged() {
+        if (scrollArea.contentItem) {
+          scrollArea.contentItem.contentY = 0
+        }
+      }
+    }
+
+    Item {
+      id: panelContainer
       anchors.fill: parent
-      clip: true
-      ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-      ScrollBar.vertical.policy: panelColumn.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
 
       Column {
-        id: panelColumn
-        width: scrollArea.availableWidth
-        spacing: Style.space(12)
+        id: headerColumn
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        spacing: Style.space(10)
+        z: 2
 
         // ---------- Hero Section ----------
         Item {
@@ -264,6 +301,12 @@ Panel {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(6)
+
+            PanelActionButton {
+              iconText: root.compactMode ? "" : ""
+              tooltipText: root.compactMode ? "Detaylı Kart Görünümü" : "Kompakt Liste Görünümü"
+              onClicked: root.compactMode = !root.compactMode
+            }
 
             PanelActionButton {
               iconText: ""
@@ -418,72 +461,92 @@ Panel {
         }
 
         PanelSeparator {
+          width: parent.width
           foreground: root.bar ? root.bar.foreground : Color.foreground
         }
 
-        // ---------- Articles View (Tab 0 & 1) ----------
-        Column {
+        // Region Filter Pill Bar (Tümü | Linux | Gaming | Türkiye | Dünya)
+        RowLayout {
           width: parent.width
-          spacing: Style.space(8)
+          spacing: Style.space(4)
           visible: root.activeTab === 0 || root.activeTab === 1
 
-          // Region Filter Pill Bar (Tümü | Linux | Gaming | Türkiye | Dünya)
-          RowLayout {
-            width: parent.width
-            spacing: Style.space(4)
+          Repeater {
+            model: [
+              { id: "all", label: "Tümü", count: root.getCountForRegion("all") },
+              { id: "linux", label: "Linux", count: root.getCountForRegion("linux") },
+              { id: "gaming", label: "Gaming", count: root.getCountForRegion("gaming") },
+              { id: "tr", label: "Türkiye", count: root.getCountForRegion("tr") },
+              { id: "global", label: "Dünya", count: root.getCountForRegion("global") }
+            ]
 
-            Repeater {
-              model: [
-                { id: "all", label: "Tümü", count: root.getCountForRegion("all") },
-                { id: "linux", label: "Linux", count: root.getCountForRegion("linux") },
-                { id: "gaming", label: "Gaming", count: root.getCountForRegion("gaming") },
-                { id: "tr", label: "Türkiye", count: root.getCountForRegion("tr") },
-                { id: "global", label: "Dünya", count: root.getCountForRegion("global") }
-              ]
+            delegate: BorderSurface {
+              id: pillSurface
+              Layout.fillWidth: true
+              implicitHeight: Style.space(26)
+              radius: Style.cornerRadius
+              readonly property bool active: root.selectedRegion === modelData.id
+              color: active ? Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent) : Style.controlFill(false, pillMouse.containsMouse, Color.foreground, Color.accent)
+              borderSpec: Border.controlSpec(active ? "active" : "normal", Color.foreground, Color.accent)
 
-              delegate: BorderSurface {
-                id: pillSurface
-                Layout.fillWidth: true
-                implicitHeight: Style.space(26)
-                radius: Style.cornerRadius
-                readonly property bool active: root.selectedRegion === modelData.id
-                color: active ? Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent) : Style.controlFill(false, pillMouse.containsMouse, Color.foreground, Color.accent)
-                borderSpec: Border.controlSpec(active ? "active" : "normal", Color.foreground, Color.accent)
+              MouseArea {
+                id: pillMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.selectedRegion = modelData.id
+              }
 
-                MouseArea {
-                  id: pillMouse
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.selectedRegion = modelData.id
+              Row {
+                anchors.centerIn: parent
+                spacing: Style.space(4)
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: modelData.label
+                  color: pillSurface.active ? Color.accent : Color.foreground
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.caption
+                  font.bold: pillSurface.active
+                  anchors.verticalCenter: parent.verticalCenter
                 }
 
-                Row {
-                  anchors.centerIn: parent
-                  spacing: Style.space(4)
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.label
-                    color: pillSurface.active ? Color.accent : Color.foreground
-                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
-                    font.pixelSize: Style.font.caption
-                    font.bold: pillSurface.active
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: "(" + modelData.count + ")"
-                    color: pillSurface.active ? Color.accent : Color.muted
-                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
-                    font.pixelSize: Style.font.caption - 1
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
+                Text {
+                  textFormat: Text.PlainText
+                  text: "(" + modelData.count + ")"
+                  color: pillSurface.active ? Color.accent : Color.muted
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.caption - 1
+                  anchors.verticalCenter: parent.verticalCenter
                 }
               }
             }
           }
+        }
+      }
+
+      // ---------- Scrollable Content ----------
+      ScrollView {
+        id: scrollArea
+        anchors.top: headerColumn.bottom
+        anchors.topMargin: Style.space(8)
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: (scrollContent.implicitHeight > height) ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+
+        Column {
+          id: scrollContent
+          width: scrollArea.availableWidth
+          spacing: Style.space(8)
+
+          // ---------- Articles View (Tab 0 & 1) ----------
+          Column {
+            width: parent.width
+            spacing: Style.space(8)
+            visible: root.activeTab === 0 || root.activeTab === 1
 
           // Empty State
           BorderSurface {
@@ -533,7 +596,7 @@ Panel {
             delegate: BorderSurface {
               id: artCard
               width: parent.width
-              implicitHeight: cardContent.implicitHeight + Style.space(16)
+              implicitHeight: root.compactMode ? Style.space(34) : (cardContent.implicitHeight + Style.space(16))
               radius: Style.cornerRadius
               color: Style.controlFill(false, mouseArt.containsMouse, Color.foreground, Color.accent)
               borderSpec: Border.controlSpec(mouseArt.containsMouse ? "hover-cursor" : "normal", Color.foreground, Color.accent)
@@ -559,6 +622,7 @@ Panel {
                 anchors.top: parent.top
                 anchors.margins: Style.space(8)
                 spacing: Style.space(4)
+                visible: !root.compactMode
 
                 // Meta row: Feed badge, date, read button
                 RowLayout {
@@ -669,6 +733,84 @@ Panel {
                   maximumLineCount: 2
                   elide: Text.ElideRight
                   visible: text.length > 0
+                }
+              }
+
+              // Compact Row Mode
+              RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
+                spacing: Style.space(6)
+                visible: root.compactMode
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: art && art.is_read ? "○" : "●"
+                  color: art && art.is_read ? Color.muted : "#22c55e"
+                  font.pixelSize: Style.font.caption
+                  Layout.alignment: Qt.AlignVCenter
+                }
+
+                Rectangle {
+                  implicitHeight: Style.space(18)
+                  implicitWidth: compactBadgeText.implicitWidth + Style.space(8)
+                  radius: Style.cornerRadius
+                  color: Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
+                  Layout.alignment: Qt.AlignVCenter
+
+                  Text {
+                    id: compactBadgeText
+                    anchors.centerIn: parent
+                    textFormat: Text.PlainText
+                    text: art ? String(art.feed_name) : ""
+                    color: Color.accent
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.caption - 2
+                    font.bold: true
+                  }
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: art ? String(art.title) : ""
+                  color: Color.foreground
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: art ? !art.is_read : false
+                  elide: Text.ElideRight
+                  Layout.fillWidth: true
+                  Layout.alignment: Qt.AlignVCenter
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: art ? String(art.date) : ""
+                  color: Color.muted
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.caption - 1
+                  Layout.alignment: Qt.AlignVCenter
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: art && art.is_read ? "✓" : "○"
+                  color: mouseCompactRead.containsMouse ? Color.accent : Color.muted
+                  font.pixelSize: Style.font.caption
+                  Layout.alignment: Qt.AlignVCenter
+
+                  MouseArea {
+                    id: mouseCompactRead
+                    anchors.fill: parent
+                    anchors.margins: -Style.space(4)
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (art && art.id) {
+                        root.sendCmd("--toggle-read", art.id)
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -838,5 +980,49 @@ Panel {
         }
       }
     }
+
+      // Floating Scroll To Top Button
+      BorderSurface {
+        id: scrollToTopBtn
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Style.space(12)
+        implicitWidth: Style.space(34)
+        implicitHeight: Style.space(34)
+        radius: Style.cornerRadius
+        z: 10
+        color: Style.controlFill(false, mouseScrollTop.containsMouse, Color.foreground, Color.accent)
+        borderSpec: Border.controlSpec(mouseScrollTop.containsMouse ? "active" : "normal", Color.foreground, Color.accent)
+        opacity: (scrollArea.contentItem && scrollArea.contentItem.contentY > Style.space(100)) ? 0.95 : 0.0
+        visible: opacity > 0.01
+
+        Behavior on opacity {
+          NumberAnimation { duration: 150 }
+        }
+
+        MouseArea {
+          id: mouseScrollTop
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            if (scrollArea.contentItem) {
+              scrollArea.contentItem.contentY = 0
+            }
+          }
+        }
+
+        Text {
+          anchors.centerIn: parent
+          textFormat: Text.PlainText
+          text: "↑"
+          color: Color.accent
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.body
+          font.bold: true
+        }
+      }
+    }
   }
 }
+
