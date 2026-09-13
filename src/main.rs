@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 const MAX_ARTICLES_TOTAL: usize = 300;
 const MAX_FEED_BODY_BYTES: usize = 524288; // 512 KiB
 const FEED_TIMEOUT_SECS: u64 = 4;
-const WHOLE_REFRESH_TIMEOUT_SECS: u64 = 30;
+const WHOLE_REFRESH_TIMEOUT_SECS: u64 = 15;
+const MAX_CONCURRENT_FETCHES: usize = 8;
 
 #[repr(C)]
 struct PollFd {
@@ -166,24 +167,41 @@ fn decode_html_entities(s: &str) -> String {
 }
 
 fn strip_html_and_decode(s: &str, max_len: usize) -> String {
-    let decoded_once = decode_html_entities(s);
-    let mut clean = String::with_capacity(decoded_once.len());
+    let mut stripped = String::with_capacity(s.len());
     let mut in_tag = false;
-
-    for c in decoded_once.chars() {
+    for c in s.chars() {
         if c == '<' {
             in_tag = true;
         } else if c == '>' {
             in_tag = false;
         } else if !in_tag {
-            clean.push(c);
+            stripped.push(c);
         }
     }
 
-    let decoded_again = decode_html_entities(&clean);
-    let words: Vec<&str> = decoded_again.split_whitespace().collect();
-    let res = words.join(" ");
-    sanitize_text(&res, max_len)
+    let decoded = decode_html_entities(&stripped);
+    let mut result = String::with_capacity(decoded.len().min(max_len));
+    let mut last_was_space = true;
+
+    for c in decoded.chars() {
+        if c.is_whitespace() {
+            if !last_was_space {
+                result.push(' ');
+                last_was_space = true;
+            }
+        } else if !c.is_control() {
+            result.push(c);
+            last_was_space = false;
+        }
+        if result.len() >= max_len {
+            break;
+        }
+    }
+
+    if result.ends_with(' ') {
+        result.pop();
+    }
+    result
 }
 
 fn get_state_dir() -> PathBuf {
@@ -600,24 +618,51 @@ fn fetch_url_bounded(url: &str, deadline: Instant, max_bytes: usize) -> Option<S
     Some(String::from_utf8_lossy(&buffer).to_string())
 }
 
-fn extract_xml_tag(xml: &str, tag: &str) -> String {
-    let open_tag = format!("<{}", tag);
-    let close_tag = format!("</{}>", tag);
-
-    if let Some(start_pos) = xml.find(&open_tag) {
-        let after_open = &xml[start_pos + open_tag.len()..];
-        if let Some(tag_end) = after_open.find('>') {
-            let content_start = &after_open[tag_end + 1..];
-            if let Some(end_pos) = content_start.find(&close_tag) {
-                let inner = &content_start[..end_pos];
-                if let Some(cdata_start) = inner.find("<![CDATA[") {
-                    let after_cdata = &inner[cdata_start + 9..];
-                    if let Some(cdata_end) = after_cdata.find("]]>") {
-                        return after_cdata[..cdata_end].to_string();
-                    }
+fn find_open_tag<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
+    let mut cur = xml;
+    while let Some(idx) = cur.find('<') {
+        let after_bracket = &cur[idx + 1..];
+        if after_bracket.starts_with(tag) {
+            let next_byte = after_bracket.as_bytes().get(tag.len());
+            if matches!(next_byte, Some(b'>' | b' ' | b'\t' | b'\n' | b'\r' | b'/')) {
+                if let Some(tag_end) = after_bracket.find('>') {
+                    return Some(&after_bracket[tag_end + 1..]);
                 }
-                return inner.to_string();
             }
+        }
+        cur = after_bracket;
+    }
+    None
+}
+
+fn find_close_tag(xml: &str, tag: &str) -> Option<usize> {
+    let mut cur = xml;
+    let mut offset = 0;
+    while let Some(idx) = cur.find("</") {
+        let after_slash = &cur[idx + 2..];
+        if after_slash.starts_with(tag) {
+            let next_byte = after_slash.as_bytes().get(tag.len());
+            if matches!(next_byte, Some(b'>' | b' ' | b'\t' | b'\n' | b'\r')) {
+                return Some(offset + idx);
+            }
+        }
+        offset += idx + 2;
+        cur = after_slash;
+    }
+    None
+}
+
+fn extract_xml_tag(xml: &str, tag: &str) -> String {
+    if let Some(content_start) = find_open_tag(xml, tag) {
+        if let Some(end_pos) = find_close_tag(content_start, tag) {
+            let inner = &content_start[..end_pos];
+            if let Some(cdata_start) = inner.find("<![CDATA[") {
+                let after_cdata = &inner[cdata_start + 9..];
+                if let Some(cdata_end) = after_cdata.find("]]>") {
+                    return after_cdata[..cdata_end].to_string();
+                }
+            }
+            return inner.to_string();
         }
     }
     String::new()
@@ -775,30 +820,79 @@ fn refresh_all_feeds() -> RssState {
     }
 
     let deadline = Instant::now() + Duration::from_secs(WHOLE_REFRESH_TIMEOUT_SECS);
-    let mut per_feed_articles: Vec<Vec<Article>> = Vec::new();
+    let enabled_indices: Vec<usize> = feeds
+        .iter()
+        .enumerate()
+        .filter_map(|(i, f)| if f.enabled { Some(i) } else { None })
+        .collect();
 
-    for feed in &mut feeds {
-        if !feed.enabled || Instant::now() >= deadline {
-            continue;
-        }
+    struct FetchOutcome {
+        index: usize,
+        last_fetched: String,
+        articles: Vec<Article>,
+    }
 
-        if let Some(body) = fetch_url_bounded(&feed.url, deadline, MAX_FEED_BODY_BYTES) {
-            let parsed = parse_feed_xml(feed, &body);
-            if !parsed.is_empty() {
-                feed.last_fetched = "Just now".to_string();
-                let mut feed_arts = Vec::new();
-                for mut art in parsed {
-                    if read_map.contains(&art.id) {
-                        art.is_read = true;
+    let queue = std::sync::Mutex::new(enabled_indices.into_iter());
+    let outcomes = std::sync::Mutex::new(Vec::with_capacity(feeds.len()));
+
+    std::thread::scope(|s| {
+        for _ in 0..MAX_CONCURRENT_FETCHES {
+            s.spawn(|| {
+                loop {
+                    let next_idx = {
+                        let mut lock = queue.lock().unwrap();
+                        lock.next()
+                    };
+                    let Some(idx) = next_idx else { break; };
+
+                    if Instant::now() >= deadline {
+                        let mut lock = outcomes.lock().unwrap();
+                        lock.push(FetchOutcome {
+                            index: idx,
+                            last_fetched: "Timeout".to_string(),
+                            articles: Vec::new(),
+                        });
+                        continue;
                     }
-                    feed_arts.push(art);
+
+                    let feed_clone = feeds[idx].clone();
+                    let (status, arts) = if let Some(body) = fetch_url_bounded(&feed_clone.url, deadline, MAX_FEED_BODY_BYTES) {
+                        let parsed = parse_feed_xml(&feed_clone, &body);
+                        if !parsed.is_empty() {
+                            ("Just now".to_string(), parsed)
+                        } else {
+                            ("Parsed 0".to_string(), Vec::new())
+                        }
+                    } else {
+                        ("Timeout / Error".to_string(), Vec::new())
+                    };
+
+                    let mut lock = outcomes.lock().unwrap();
+                    lock.push(FetchOutcome {
+                        index: idx,
+                        last_fetched: status,
+                        articles: arts,
+                    });
                 }
-                per_feed_articles.push(feed_arts);
-            } else {
-                feed.last_fetched = "Parsed 0".to_string();
+            });
+        }
+    });
+
+    let mut outcomes = outcomes.into_inner().unwrap();
+    outcomes.sort_by_key(|o| o.index);
+
+    let mut per_feed_articles: Vec<Vec<Article>> = Vec::with_capacity(outcomes.len());
+    for o in outcomes {
+        feeds[o.index].last_fetched = o.last_fetched;
+        if !o.articles.is_empty() {
+            let mut feed_arts = Vec::with_capacity(o.articles.len());
+            for mut art in o.articles {
+                if read_map.contains(&art.id) {
+                    art.is_read = true;
+                }
+                feed_arts.push(art);
             }
-        } else {
-            feed.last_fetched = "Timeout / Error".to_string();
+            per_feed_articles.push(feed_arts);
         }
     }
 
@@ -992,49 +1086,52 @@ fn main() {
 
     if args.len() >= 3 && args[1] == "--open-url" {
         let url = &args[2];
-        if args.len() >= 4 {
-            let _ = mark_article_read(&args[3]);
-        }
+        let state = if args.len() >= 4 {
+            mark_article_read(&args[3])
+        } else {
+            get_current_state()
+        };
         if url.starts_with("http://") || url.starts_with("https://") {
             let _ = Command::new("xdg-open").arg(url).spawn();
         }
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
     if args.len() >= 3 && args[1] == "--mark-read" {
         let state = mark_article_read(&args[2]);
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
     if args.len() >= 3 && args[1] == "--toggle-read" {
         let state = toggle_article_read(&args[2]);
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
     if args.iter().any(|a| a == "--mark-all-read") {
         let state = mark_all_articles_read();
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
     if args.len() >= 3 && args[1] == "--add-feed" {
         let name = if args.len() >= 4 { Some(args[3].as_str()) } else { None };
         let state = add_new_feed(&args[2], name);
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
     if args.len() >= 3 && args[1] == "--remove-feed" {
         let state = remove_feed(&args[2]);
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
     if args.len() >= 3 && args[1] == "--toggle-feed" {
         let state = toggle_feed(&args[2]);
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
@@ -1042,7 +1139,7 @@ fn main() {
         let feeds = default_feeds();
         save_feeds(&feeds);
         let state = refresh_all_feeds();
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
@@ -1076,7 +1173,7 @@ fn main() {
     }
 
     if args.iter().any(|a| a == "--json") {
-        println!("{}", serde_json::to_string_pretty(&state).unwrap());
+        println!("{}", serde_json::to_string(&state).unwrap());
         return;
     }
 
@@ -1189,5 +1286,18 @@ mod tests {
         assert_eq!(format_relative_date("2026-09-08T12:30:00Z"), "2026-09-08");
         assert_eq!(format_relative_date("Tue, 08 Sep 2026 14:30:00 +0000"), "08 Sep 2026");
         assert_eq!(format_relative_date(""), "Recent");
+    }
+
+    #[test]
+    fn test_extract_xml_tag_with_attributes() {
+        let xml = r#"<entry><title type="text">Custom Attribute Title</title><content type="html"><![CDATA[<b>Bold text</b>]]></content></entry>"#;
+        assert_eq!(extract_xml_tag(xml, "title"), "Custom Attribute Title");
+        assert_eq!(extract_xml_tag(xml, "content"), "<b>Bold text</b>");
+    }
+
+    #[test]
+    fn test_strip_html_whitespace_normalization() {
+        let input = "<p>First paragraph.</p>   \n\n\t  <p>Second &amp; final.</p>";
+        assert_eq!(strip_html_and_decode(input, 100), "First paragraph. Second & final.");
     }
 }

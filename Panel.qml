@@ -119,32 +119,46 @@ Panel {
     function markRead() { root.markAllAsRead() }
   }
 
+  function applyStateJson(rawText) {
+    try {
+      var raw = String(rawText || "").slice(0, 524288)
+      var data = JSON.parse(raw)
+      root.totalArticles = data.total_articles || 0
+      root.unreadArticles = data.unread_articles || 0
+      root.totalFeeds = data.total_feeds || 0
+      root.articles = data.articles || []
+      root.feeds = data.feeds || []
+      root.isRefreshing = false
+    } catch (e) {
+      root.isRefreshing = false
+    }
+  }
+
   Process {
     id: engineProc
     command: [root.resolveEnginePath(), "--json"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        try {
-          var raw = String(text || "").slice(0, 524288)
-          var data = JSON.parse(raw)
-          root.totalArticles = data.total_articles || 0
-          root.unreadArticles = data.unread_articles || 0
-          root.totalFeeds = data.total_feeds || 0
-          root.articles = data.articles || []
-          root.feeds = data.feeds || []
-          root.isRefreshing = false
-        } catch (e) {
-          root.isRefreshing = false
-        }
+        root.applyStateJson(text)
       }
     }
   }
 
   Process {
     id: actionProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text && text.trim().length > 0) {
+          root.applyStateJson(text)
+        }
+      }
+    }
     onExited: function(exitCode) {
-      engineProc.running = true
+      if (root.isRefreshing) {
+        root.isRefreshing = false
+      }
     }
   }
 

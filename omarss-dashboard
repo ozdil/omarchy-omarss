@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 # Prefer native Quickshell UI if available
 if [[ "${1:-}" != "--cli" ]] && command -v quickshell >/dev/null 2>&1; then
     if quickshell ipc -p /usr/share/omarchy/shell call ozdil.omarss toggle >/dev/null 2>&1; then
@@ -7,4 +9,18 @@ if [[ "${1:-}" != "--cli" ]] && command -v quickshell >/dev/null 2>&1; then
 fi
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$DIR/omarss-engine" "$@"
+BIN="${DIR}/omarss-engine"
+
+if [[ ! -x "${BIN}" ]] && [[ -f "${DIR}/Cargo.toml" ]] && command -v cargo >/dev/null 2>&1; then
+    echo "Building omarss-engine from source..."
+    (cd "${DIR}" && cargo build --release --locked && cp "target/release/omarss-engine" "${BIN}" && chmod +x "${BIN}") || true
+fi
+
+if [[ -x "${BIN}" ]]; then
+    clear
+    exec "${BIN}" "$@"
+else
+    echo "Error: omarss-engine binary not found. Please run 'cargo build --release --locked' in ${DIR}"
+    exit 1
+fi
+

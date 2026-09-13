@@ -1,3 +1,15 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$DIR/omarss-engine" --status "$@"
+BIN="${DIR}/omarss-engine"
+
+if [[ ! -x "${BIN}" ]] && [[ -f "${DIR}/Cargo.toml" ]] && command -v cargo >/dev/null 2>&1; then
+    (cd "${DIR}" && cargo build --release --locked --quiet && cp "target/release/omarss-engine" "${BIN}" && chmod +x "${BIN}") || true
+fi
+
+if [[ -x "${BIN}" ]]; then
+    exec "${BIN}" --status "$@"
+else
+    echo '{"text":"","tooltip":"OmaRSS (Engine unbuilt)","class":"normal","unread":0}'
+fi
