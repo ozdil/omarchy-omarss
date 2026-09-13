@@ -203,31 +203,32 @@ Panel {
     contentWidth: panel.fittedContentWidth(Style.space(480))
     contentHeight: panel.fittedContentHeight(headerColumn.implicitHeight + scrollContent.implicitHeight + Style.space(16), Style.space(640))
 
-    Keys.onPressed: function(event) {
-      if (newFeedInput && newFeedInput.activeFocus) return;
-      if (!scrollArea.contentItem) return;
-      var step = Style.space(220);
-      if (event.key === Qt.Key_PageDown || (event.key === Qt.Key_Space && !(event.modifiers & Qt.ShiftModifier))) {
-        scrollArea.contentItem.contentY = Math.min(
-          scrollArea.contentItem.contentHeight - scrollArea.height,
-          scrollArea.contentItem.contentY + step
-        );
-        event.accepted = true;
-      } else if (event.key === Qt.Key_PageUp || (event.key === Qt.Key_Space && (event.modifiers & Qt.ShiftModifier))) {
-        scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentY - step);
-        event.accepted = true;
-      } else if (event.key === Qt.Key_Home) {
-        scrollArea.contentItem.contentY = 0;
-        event.accepted = true;
-      } else if (event.key === Qt.Key_End) {
-        scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentHeight - scrollArea.height);
-        event.accepted = true;
-      }
-    }
-
     Item {
       id: panelContainer
       anchors.fill: parent
+      focus: true
+
+      Keys.onPressed: function(event) {
+        if (newFeedInput && newFeedInput.activeFocus) return;
+        if (!scrollArea.contentItem) return;
+        var step = Style.space(220);
+        if (event.key === Qt.Key_PageDown || (event.key === Qt.Key_Space && !(event.modifiers & Qt.ShiftModifier))) {
+          scrollArea.contentItem.contentY = Math.min(
+            scrollArea.contentItem.contentHeight - scrollArea.height,
+            scrollArea.contentItem.contentY + step
+          );
+          event.accepted = true;
+        } else if (event.key === Qt.Key_PageUp || (event.key === Qt.Key_Space && (event.modifiers & Qt.ShiftModifier))) {
+          scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentY - step);
+          event.accepted = true;
+        } else if (event.key === Qt.Key_Home) {
+          scrollArea.contentItem.contentY = 0;
+          event.accepted = true;
+        } else if (event.key === Qt.Key_End) {
+          scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentHeight - scrollArea.height);
+          event.accepted = true;
+        }
+      }
 
       Connections {
         target: root
