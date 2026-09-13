@@ -225,23 +225,23 @@ Panel {
       }
     }
 
-    Connections {
-      target: root
-      function onActiveTabChanged() {
-        if (scrollArea.contentItem) {
-          scrollArea.contentItem.contentY = 0
-        }
-      }
-      function onSelectedRegionChanged() {
-        if (scrollArea.contentItem) {
-          scrollArea.contentItem.contentY = 0
-        }
-      }
-    }
-
     Item {
       id: panelContainer
       anchors.fill: parent
+
+      Connections {
+        target: root
+        function onActiveTabChanged() {
+          if (scrollArea.contentItem) {
+            scrollArea.contentItem.contentY = 0
+          }
+        }
+        function onSelectedRegionChanged() {
+          if (scrollArea.contentItem) {
+            scrollArea.contentItem.contentY = 0
+          }
+        }
+      }
 
       Column {
         id: headerColumn
