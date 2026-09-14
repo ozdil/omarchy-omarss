@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH="/usr/bin:/bin"
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="${DIR}/omarss-engine"
 
 if [[ ! -x "${BIN}" ]] && [[ -f "${DIR}/Cargo.toml" ]] && command -v cargo >/dev/null 2>&1; then
-    (cd "${DIR}" && cargo build --release --locked --quiet && cp "target/release/omarss-engine" "${BIN}" && chmod +x "${BIN}") || true
+    (cd "${DIR}" && cargo build --release --locked --quiet && cp "target/release/omarss-engine" "${BIN}" && chmod +x "${BIN}") >/dev/null 2>&1 || true
 fi
 
 if [[ -x "${BIN}" ]]; then
@@ -13,3 +14,4 @@ if [[ -x "${BIN}" ]]; then
 else
     echo '{"text":"","tooltip":"OmaRSS (Engine unbuilt)","class":"normal","unread":0}'
 fi
+
