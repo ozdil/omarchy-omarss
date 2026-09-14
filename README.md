@@ -1,5 +1,7 @@
 # OmaRSS - Native RSS and Atom Feed Hub for Omarchy Linux
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-Support_Development-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/ozdil)
+
 Lightweight RSS and Atom feed reader and desktop notification hub for Omarchy Linux written in Rust.
 
 Author: Ozan Ozdil (ozdil)  
@@ -101,6 +103,14 @@ OmaRSS complies strictly with the Omarchy Linux Security Standards (AGENTS.md):
 - Subprocess Isolation: Processes execute in isolated process groups with bounded buffers and strict monotonic deadlines.
 - State File Hardening: Feed caches and database entries are stored under `$XDG_STATE_HOME/omarss/` with POSIX mode 0600 file permissions.
 - Plain Text UI: All dynamic content in QML components is rendered with `textFormat: Text.PlainText`.
+
+---
+
+## Support & Sponsorship
+
+If you find OmaRSS useful and want to support independent Linux development:
+
+<a href="https://buymeacoffee.com/ozdil" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 180px !important;" ></a>
 
 ---
 
