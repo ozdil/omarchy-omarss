@@ -29,6 +29,7 @@ const POLLERR: i16 = 0x0008;
 extern "C" {
     fn poll(fds: *mut PollFd, nfds: usize, timeout: i32) -> i32;
     fn kill(pid: i32, sig: i32) -> i32;
+    fn getuid() -> u32;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -418,15 +419,231 @@ fn default_feeds() -> Vec<Feed> {
     ]
 }
 
+const O_NOFOLLOW: i32 = 0o400000;
+const MAX_FEEDS_COUNT: usize = 50;
+const MAX_ARTICLES_COUNT: usize = 200;
+const MAX_STATE_FILE_BYTES: u64 = 524288; // 512 KiB
+
+static STAGING_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+struct TempFileGuard<'a> {
+    path: &'a std::path::Path,
+    active: bool,
+}
+
+impl<'a> Drop for TempFileGuard<'a> {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = fs::remove_file(self.path);
+        }
+    }
+}
+
+fn read_secure_state_file(path: &std::path::Path, max_bytes: u64) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+
+    let parent = path.parent()?;
+    if let Ok(parent_meta) = fs::symlink_metadata(parent) {
+        // SAFETY: getuid is a POSIX libc function without side effects
+        let current_uid = unsafe { getuid() };
+        if parent_meta.file_type().is_symlink()
+            || !parent_meta.file_type().is_dir()
+            || parent_meta.uid() != current_uid
+        {
+            return None;
+        }
+    } else {
+        return None;
+    }
+
+    // SAFETY: getuid is a POSIX libc function without side effects
+    let current_uid = unsafe { getuid() };
+    if let Ok(meta) = fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() || !meta.file_type().is_file() || meta.uid() != current_uid {
+            return None;
+        }
+    } else {
+        return None;
+    }
+
+    let mut opts = fs::OpenOptions::new();
+    opts.read(true).custom_flags(O_NOFOLLOW);
+
+    let f = opts.open(path).ok()?;
+    let meta = f.metadata().ok()?;
+    if !meta.file_type().is_file() || meta.uid() != current_uid {
+        return None;
+    }
+
+    let mut content = String::new();
+    f.take(max_bytes).read_to_string(&mut content).ok()?;
+    Some(content)
+}
+
+fn write_secure_state_file(path: &std::path::Path, content: &str) {
+    use std::io::Write;
+    use std::os::unix::fs::MetadataExt;
+    use std::sync::atomic::Ordering;
+
+    let parent = match path.parent() {
+        Some(p) => p,
+        None => return,
+    };
+
+    if !parent.exists() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
+
+    let parent_meta = match fs::symlink_metadata(parent) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+
+    // SAFETY: getuid is a POSIX libc function without side effects
+    let current_uid = unsafe { getuid() };
+    if parent_meta.file_type().is_symlink()
+        || !parent_meta.file_type().is_dir()
+        || parent_meta.uid() != current_uid
+    {
+        return;
+    }
+
+    // If destination already exists, verify it is a regular file owned by current user
+    if let Ok(meta) = fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() || !meta.file_type().is_file() || meta.uid() != current_uid {
+            return;
+        }
+    }
+
+    let pid = std::process::id();
+    let mut created_file = None;
+    let mut tmp_path_buf = PathBuf::new();
+
+    for _ in 0..10 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let seq = STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let candidate = parent.join(format!(".tmp_state_{}_{}_{}.json", pid, nanos, seq));
+
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(O_NOFOLLOW);
+
+        match opts.open(&candidate) {
+            Ok(f) => {
+                tmp_path_buf = candidate;
+                created_file = Some(f);
+                break;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return,
+        }
+    }
+
+    let mut tmp_file = match created_file {
+        Some(f) => f,
+        None => return,
+    };
+
+    let mut guard = TempFileGuard {
+        path: &tmp_path_buf,
+        active: true,
+    };
+
+    let _ = tmp_file.set_permissions(fs::Permissions::from_mode(0o600));
+
+    if tmp_file.write_all(content.as_bytes()).is_err() {
+        return;
+    }
+
+    if tmp_file.sync_all().is_err() {
+        return;
+    }
+
+    if let Ok(meta) = tmp_file.metadata() {
+        if meta.len() != content.len() as u64 {
+            return;
+        }
+    } else {
+        return;
+    }
+
+    // Re-verify destination before rename
+    if let Ok(meta) = fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() || !meta.file_type().is_file() || meta.uid() != current_uid {
+            return;
+        }
+    }
+
+    drop(tmp_file);
+    if fs::rename(&tmp_path_buf, path).is_ok() {
+        guard.active = false;
+    }
+}
+
+fn sanitize_and_cap_feed(feed: &mut Feed) {
+    if feed.url.len() > 1024 {
+        feed.url.truncate(1024);
+    }
+    if feed.name.len() > 128 {
+        feed.name.truncate(128);
+    }
+    if feed.category.len() > 64 {
+        feed.category.truncate(64);
+    }
+    if feed.icon.len() > 16 {
+        feed.icon.truncate(16);
+    }
+    if feed.last_fetched.len() > 64 {
+        feed.last_fetched.truncate(64);
+    }
+}
+
+fn sanitize_and_cap_article(article: &mut Article) {
+    if article.id.len() > 256 {
+        article.id.truncate(256);
+    }
+    if article.title.len() > 256 {
+        article.title.truncate(256);
+    }
+    if article.link.len() > 1024 {
+        article.link.truncate(1024);
+    }
+    if article.feed_url.len() > 1024 {
+        article.feed_url.truncate(1024);
+    }
+    if article.excerpt.len() > 2048 {
+        article.excerpt.truncate(2048);
+    }
+    if article.feed_name.len() > 128 {
+        article.feed_name.truncate(128);
+    }
+    if article.category.len() > 64 {
+        article.category.truncate(64);
+    }
+    if article.date.len() > 64 {
+        article.date.truncate(64);
+    }
+}
+
 fn load_feeds() -> Vec<Feed> {
     let feeds_path = get_state_dir().join("feeds.json");
-    if let Ok(content) = fs::read_to_string(&feeds_path) {
+    if let Some(content) = read_secure_state_file(&feeds_path, MAX_STATE_FILE_BYTES) {
         if let Ok(mut feeds) = serde_json::from_str::<Vec<Feed>>(&content) {
+            for f in &mut feeds {
+                sanitize_and_cap_feed(f);
+            }
+            feeds.truncate(MAX_FEEDS_COUNT);
             if !feeds.is_empty() {
                 let defs = default_feeds();
                 let mut changed = false;
                 for def in defs {
-                    if !feeds.iter().any(|f| f.url == def.url) {
+                    if !feeds.iter().any(|f| f.url == def.url) && feeds.len() < MAX_FEEDS_COUNT {
                         feeds.push(def);
                         changed = true;
                     }
@@ -444,32 +661,25 @@ fn load_feeds() -> Vec<Feed> {
 }
 
 fn save_feeds(feeds: &[Feed]) {
-    let dir = get_state_dir();
-    let _ = fs::create_dir_all(&dir);
-    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-    let feeds_path = dir.join("feeds.json");
-    if let Ok(json) = serde_json::to_string_pretty(feeds) {
-        let tmp = dir.join(".tmp_feeds.json");
-        if let Ok(mut file) = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)
-        {
-            use std::io::Write;
-            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
-                drop(file);
-                let _ = fs::rename(tmp, feeds_path);
-            }
-        }
+    let mut capped = feeds.to_vec();
+    for f in &mut capped {
+        sanitize_and_cap_feed(f);
+    }
+    capped.truncate(MAX_FEEDS_COUNT);
+    let feeds_path = get_state_dir().join("feeds.json");
+    if let Ok(json) = serde_json::to_string_pretty(&capped) {
+        write_secure_state_file(&feeds_path, &json);
     }
 }
 
 fn load_articles() -> Vec<Article> {
     let art_path = get_state_dir().join("articles.json");
-    if let Ok(content) = fs::read_to_string(&art_path) {
-        if let Ok(arts) = serde_json::from_str::<Vec<Article>>(&content) {
+    if let Some(content) = read_secure_state_file(&art_path, MAX_STATE_FILE_BYTES) {
+        if let Ok(mut arts) = serde_json::from_str::<Vec<Article>>(&content) {
+            for a in &mut arts {
+                sanitize_and_cap_article(a);
+            }
+            arts.truncate(MAX_ARTICLES_COUNT);
             return arts;
         }
     }
@@ -477,25 +687,14 @@ fn load_articles() -> Vec<Article> {
 }
 
 fn save_articles(articles: &[Article]) {
-    let dir = get_state_dir();
-    let _ = fs::create_dir_all(&dir);
-    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-    let art_path = dir.join("articles.json");
-    if let Ok(json) = serde_json::to_string_pretty(articles) {
-        let tmp = dir.join(".tmp_articles.json");
-        if let Ok(mut file) = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)
-        {
-            use std::io::Write;
-            if file.write_all(json.as_bytes()).is_ok() && file.sync_all().is_ok() {
-                drop(file);
-                let _ = fs::rename(tmp, art_path);
-            }
-        }
+    let mut capped = articles.to_vec();
+    for a in &mut capped {
+        sanitize_and_cap_article(a);
+    }
+    capped.truncate(MAX_ARTICLES_COUNT);
+    let art_path = get_state_dir().join("articles.json");
+    if let Ok(json) = serde_json::to_string_pretty(&capped) {
+        write_secure_state_file(&art_path, &json);
     }
 }
 
@@ -1299,5 +1498,128 @@ mod tests {
     fn test_strip_html_whitespace_normalization() {
         let input = "<p>First paragraph.</p>   \n\n\t  <p>Second &amp; final.</p>";
         assert_eq!(strip_html_and_decode(input, 100), "First paragraph. Second & final.");
+    }
+
+    #[test]
+    fn test_secure_state_file_write_and_read_roundtrip() {
+        let tmp_dir = std::env::temp_dir().join(format!("omarss_test_roundtrip_{}", std::process::id()));
+        let _ = fs::create_dir_all(&tmp_dir);
+        let target = tmp_dir.join("test_state.json");
+
+        let sample_data = r#"{"test":"data_roundtrip_ok"}"#;
+        write_secure_state_file(&target, sample_data);
+
+        let read_back = read_secure_state_file(&target, MAX_STATE_FILE_BYTES);
+        assert_eq!(read_back, Some(sample_data.to_string()));
+
+        // Verify mode 0600 permissions
+        use std::os::unix::fs::MetadataExt;
+        let meta = fs::symlink_metadata(&target).unwrap();
+        assert_eq!(meta.mode() & 0o777, 0o600);
+
+        let _ = fs::remove_file(&target);
+        let _ = fs::remove_dir(&tmp_dir);
+    }
+
+    #[test]
+    fn test_secure_state_file_symlink_rejection() {
+        let tmp_dir = std::env::temp_dir().join(format!("omarss_test_symlink_{}", std::process::id()));
+        let _ = fs::create_dir_all(&tmp_dir);
+        let victim_file = tmp_dir.join("victim.txt");
+        fs::write(&victim_file, "PRESERVE_VICTIM_CONTENT").unwrap();
+
+        let symlink_target = tmp_dir.join("symlink_target.json");
+        std::os::unix::fs::symlink(&victim_file, &symlink_target).unwrap();
+
+        // Reading through a symlink must fail
+        assert_eq!(read_secure_state_file(&symlink_target, MAX_STATE_FILE_BYTES), None);
+
+        // Writing through a symlink must fail and preserve victim file
+        write_secure_state_file(&symlink_target, "MALICIOUS_OVERWRITE");
+        let victim_content = fs::read_to_string(&victim_file).unwrap();
+        assert_eq!(victim_content, "PRESERVE_VICTIM_CONTENT");
+
+        let _ = fs::remove_file(&symlink_target);
+        let _ = fs::remove_file(&victim_file);
+        let _ = fs::remove_dir(&tmp_dir);
+    }
+
+    #[test]
+    fn test_preplanted_tmp_symlink_rejection() {
+        let tmp_dir = std::env::temp_dir().join(format!("omarss_test_preplanted_{}", std::process::id()));
+        let _ = fs::create_dir_all(&tmp_dir);
+        let victim_file = tmp_dir.join("victim.txt");
+        fs::write(&victim_file, "VICTIM_INTACT").unwrap();
+
+        // Pre-plant temporary symlink
+        let preplanted_symlink = tmp_dir.join(format!(".tmp_state_{}_0_0.json", std::process::id()));
+        std::os::unix::fs::symlink(&victim_file, &preplanted_symlink).unwrap();
+
+        let target = tmp_dir.join("feeds.json");
+        write_secure_state_file(&target, r#"[{"url":"https://test.com"}]"#);
+
+        // Victim content must remain unchanged
+        let victim_content = fs::read_to_string(&victim_file).unwrap();
+        assert_eq!(victim_content, "VICTIM_INTACT");
+
+        let _ = fs::remove_file(&preplanted_symlink);
+        let _ = fs::remove_file(&target);
+        let _ = fs::remove_file(&victim_file);
+        let _ = fs::remove_dir(&tmp_dir);
+    }
+
+    #[test]
+    fn test_collection_and_field_caps() {
+        let mut feed = Feed {
+            url: "a".repeat(2000),
+            name: "b".repeat(500),
+            category: "c".repeat(200),
+            enabled: true,
+            last_fetched: "d".repeat(200),
+            icon: "e".repeat(50),
+        };
+        sanitize_and_cap_feed(&mut feed);
+        assert_eq!(feed.url.len(), 1024);
+        assert_eq!(feed.name.len(), 128);
+        assert_eq!(feed.category.len(), 64);
+        assert_eq!(feed.icon.len(), 16);
+        assert_eq!(feed.last_fetched.len(), 64);
+
+        let mut article = Article {
+            id: "x".repeat(500),
+            title: "t".repeat(500),
+            link: "l".repeat(2000),
+            feed_url: "u".repeat(2000),
+            date: "d".repeat(200),
+            feed_name: "f".repeat(300),
+            category: "c".repeat(200),
+            excerpt: "s".repeat(5000),
+            is_read: true,
+        };
+        sanitize_and_cap_article(&mut article);
+        assert_eq!(article.id.len(), 256);
+        assert_eq!(article.title.len(), 256);
+        assert_eq!(article.link.len(), 1024);
+        assert_eq!(article.feed_url.len(), 1024);
+        assert_eq!(article.excerpt.len(), 2048);
+        assert_eq!(article.feed_name.len(), 128);
+        assert_eq!(article.category.len(), 64);
+    }
+
+    #[test]
+    fn test_bounded_state_file_read_cap() {
+        let tmp_dir = std::env::temp_dir().join(format!("omarss_test_read_cap_{}", std::process::id()));
+        let _ = fs::create_dir_all(&tmp_dir);
+        let oversized_file = tmp_dir.join("oversized.json");
+        let large_content = "X".repeat(1024 * 1024); // 1 MiB
+        fs::write(&oversized_file, &large_content).unwrap();
+
+        // Reading with 100 byte cap must return at most 100 bytes
+        let read_result = read_secure_state_file(&oversized_file, 100);
+        assert!(read_result.is_some());
+        assert_eq!(read_result.unwrap().len(), 100);
+
+        let _ = fs::remove_file(&oversized_file);
+        let _ = fs::remove_dir(&tmp_dir);
     }
 }
