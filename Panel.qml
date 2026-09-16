@@ -24,6 +24,7 @@ Panel {
   property string selectedRegion: "all" // "all", "tr", "global"
   property bool isRefreshing: false
   property bool compactMode: false
+  readonly property string fontFamily: (root.bar && root.bar.fontFamily) ? root.bar.fontFamily : ((typeof Style !== "undefined" && Style.font && Style.font.family) ? Style.font.family : "JetBrainsMono Nerd Font")
 
   function resolveEnginePath() {
     return Qt.resolvedUrl("omarss-engine").toString().replace(/^file:\/\//, "")
@@ -262,7 +263,7 @@ Panel {
             textFormat: Text.PlainText
             text: ""
             color: root.unreadArticles > 0 ? "#22c55e" : (root.bar ? root.bar.foreground : Color.foreground)
-            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.family: root.fontFamily
             font.pixelSize: Style.font.display
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
@@ -281,7 +282,7 @@ Panel {
               textFormat: Text.PlainText
               text: "OmaRSS"
               color: root.bar ? root.bar.foreground : Color.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.family: root.fontFamily
               font.pixelSize: Style.font.title
               font.bold: true
             }
@@ -290,7 +291,7 @@ Panel {
               textFormat: Text.PlainText
               text: (root.isRefreshing ? "REFRESHING FEEDS..." : (root.unreadArticles > 0 ? (root.unreadArticles + " UNREAD ARTICLES") : "ALL FEEDS CAUGHT UP")).toUpperCase()
               color: root.unreadArticles > 0 ? "#22c55e" : Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.4)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               font.bold: true
               font.letterSpacing: 1.1
@@ -351,7 +352,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: "Unread"
                 color: root.activeTab === 0 ? Color.popups.background : Color.foreground
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: root.activeTab === 0
                 anchors.verticalCenter: parent.verticalCenter
@@ -372,7 +373,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: String(root.unreadArticles)
                   color: root.activeTab === 0 ? (root.bar ? root.bar.background : Color.background) : (root.bar ? root.bar.foreground : Color.foreground)
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.caption - 1
                   font.bold: true
                 }
@@ -403,7 +404,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: "All"
                 color: root.activeTab === 1 ? Color.popups.background : Color.foreground
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: root.activeTab === 1
                 anchors.verticalCenter: parent.verticalCenter
@@ -413,7 +414,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: "(" + root.totalArticles + ")"
                 color: root.activeTab === 1 ? Color.popups.background : Color.muted
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 anchors.verticalCenter: parent.verticalCenter
               }
@@ -443,7 +444,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: "Feeds"
                 color: root.activeTab === 2 ? Color.popups.background : Color.foreground
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: root.activeTab === 2
                 anchors.verticalCenter: parent.verticalCenter
@@ -453,7 +454,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: "(" + root.totalFeeds + ")"
                 color: root.activeTab === 2 ? Color.popups.background : Color.muted
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 anchors.verticalCenter: parent.verticalCenter
               }
@@ -506,7 +507,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.label
                   color: pillSurface.active ? Color.accent : Color.foreground
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   font.bold: pillSurface.active
                   anchors.verticalCenter: parent.verticalCenter
@@ -516,7 +517,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: "(" + modelData.count + ")"
                   color: pillSurface.active ? Color.accent : Color.muted
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.caption - 1
                   anchors.verticalCenter: parent.verticalCenter
                 }
@@ -575,7 +576,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: root.activeTab === 0 ? "You're all caught up!" : "No articles found."
                 color: Color.foreground
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.body
                 font.bold: true
               }
@@ -585,7 +586,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: root.activeTab === 0 ? "All feeds have been read." : "Add RSS feeds in the Feeds tab."
                 color: Color.muted
-                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
               }
             }
@@ -642,7 +643,7 @@ Panel {
                       textFormat: Text.PlainText
                       text: art ? String(art.feed_name) : ""
                       color: Color.accent
-                      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                      font.family: root.fontFamily
                       font.pixelSize: Style.font.caption - 1
                       font.bold: true
                     }
@@ -661,7 +662,7 @@ Panel {
                       textFormat: Text.PlainText
                       text: art ? String(art.category) : ""
                       color: Color.muted
-                      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                      font.family: root.fontFamily
                       font.pixelSize: Style.font.caption - 2
                     }
                   }
@@ -670,7 +671,7 @@ Panel {
                     textFormat: Text.PlainText
                     text: art ? String(art.date) : ""
                     color: Color.muted
-                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                   }
 
@@ -691,7 +692,7 @@ Panel {
                       textFormat: Text.PlainText
                       text: art && art.is_read ? "READ" : "● NEW"
                       color: art && art.is_read ? Color.muted : (root.bar ? root.bar.foreground : Color.foreground)
-                      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                      font.family: root.fontFamily
                       font.pixelSize: Style.font.caption - 1
                       font.bold: true
                     }
@@ -714,7 +715,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: art ? String(art.title) : ""
                   color: Color.foreground
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
                   font.bold: art ? !art.is_read : false
                   wrapMode: Text.Wrap
@@ -728,7 +729,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: art ? String(art.excerpt) : ""
                   color: Color.muted
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   wrapMode: Text.Wrap
                   maximumLineCount: 2
@@ -766,7 +767,7 @@ Panel {
                     textFormat: Text.PlainText
                     text: art ? String(art.feed_name) : ""
                     color: Color.accent
-                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.family: root.fontFamily
                     font.pixelSize: Style.font.caption - 2
                     font.bold: true
                   }
@@ -776,7 +777,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: art ? String(art.title) : ""
                   color: Color.foreground
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
                   font.bold: art ? !art.is_read : false
                   elide: Text.ElideRight
@@ -788,7 +789,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: art ? String(art.date) : ""
                   color: Color.muted
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.caption - 1
                   Layout.alignment: Qt.AlignVCenter
                 }
@@ -827,7 +828,7 @@ Panel {
           PanelSectionHeader {
             text: "ADD NEW FEED"
             foreground: root.bar ? root.bar.foreground : Color.foreground
-            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            fontFamily: root.fontFamily
           }
 
           RowLayout {
@@ -866,7 +867,7 @@ Panel {
             PanelSectionHeader {
               text: "SUBSCRIBED FEEDS"
               foreground: root.bar ? root.bar.foreground : Color.foreground
-              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              fontFamily: root.fontFamily
               Layout.fillWidth: true
             }
 
@@ -902,7 +903,7 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   text: feedItem ? String(feedItem.icon || "") : ""
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.family: root.fontFamily
                   font.pixelSize: Style.font.title
                   color: feedItem && feedItem.enabled ? Color.accent : Color.muted
                   Layout.preferredWidth: Style.space(24)
@@ -919,7 +920,7 @@ Panel {
                       textFormat: Text.PlainText
                       text: feedItem ? String(feedItem.name) : ""
                       color: Color.foreground
-                      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                      font.family: root.fontFamily
                       font.pixelSize: Style.font.bodySmall
                       font.bold: true
                     }
@@ -937,7 +938,7 @@ Panel {
                         textFormat: Text.PlainText
                         text: feedItem ? String(feedItem.category) : ""
                         color: Color.muted
-                        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                        font.family: root.fontFamily
                         font.pixelSize: Style.font.caption - 2
                         font.bold: true
                       }
@@ -949,7 +950,7 @@ Panel {
                     textFormat: Text.PlainText
                     text: feedItem ? String(feedItem.url) : ""
                     color: Color.muted
-                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.family: root.fontFamily
                     font.pixelSize: Style.font.caption - 1
                     elide: Text.ElideMiddle
                   }
@@ -1018,7 +1019,7 @@ Panel {
           textFormat: Text.PlainText
           text: "↑"
           color: Color.accent
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.family: root.fontFamily
           font.pixelSize: Style.font.body
           font.bold: true
         }
