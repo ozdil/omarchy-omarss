@@ -99,10 +99,11 @@ omarss-engine --toggle-feed <url>
 
 ## Security and Architecture Standards
 
-OmaRSS complies strictly with the Omarchy Linux Security Standards (AGENTS.md):
-- Subprocess Isolation: Processes execute in isolated process groups with bounded buffers and strict monotonic deadlines.
-- State File Hardening: Feed caches and database entries are stored under `$XDG_STATE_HOME/omarss/` with POSIX mode 0600 file permissions.
-- Plain Text UI: All dynamic content in QML components is rendered with `textFormat: Text.PlainText`.
+OmaRSS complies strictly with the Omarchy Linux Security Standards:
+- **Descriptor-Bound State Directory & File Operations:** State directory (`$XDG_STATE_HOME/omarchy/omarss`) and state files (`feeds.json`, `articles.json`) are traversed, created, and managed exclusively via held directory file descriptors (`openat`, `fstat`, `fchmod`, `renameat2`, `unlinkat`) with `O_NOFOLLOW | O_DIRECTORY`, eliminating TOCTOU / ancestor-swap symlink races. No pathname-based chmod or mutation is executed.
+- **Subprocess Isolation:** Processes execute in isolated process groups (`process_group(0)`) with bounded buffers and strict monotonic deadlines.
+- **State File Hardening:** Feed caches and database entries are stored with strict POSIX mode 0600 file permissions and 0700 directory permissions. Symlinks and UID mismatches are rejected upfront.
+- **Plain Text UI:** All dynamic content in QML components is rendered with `textFormat: Text.PlainText`.
 
 ---
 

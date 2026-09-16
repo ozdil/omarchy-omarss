@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
@@ -29,7 +28,6 @@ const POLLERR: i16 = 0x0008;
 extern "C" {
     fn poll(fds: *mut PollFd, nfds: usize, timeout: i32) -> i32;
     fn kill(pid: i32, sig: i32) -> i32;
-    fn getuid() -> u32;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -232,7 +230,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Linux Kernel".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "🐧".to_string(),
+            icon: "".to_string(),
         },
         Feed {
             url: "https://news.itsfoss.com/rss/".to_string(),
@@ -256,7 +254,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Linux Haber".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "📰".to_string(),
+            icon: "".to_string(),
         },
         Feed {
             url: "https://distrowatch.com/news/headline.xml".to_string(),
@@ -272,7 +270,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Linux Dergi".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "📑".to_string(),
+            icon: "󰈙".to_string(),
         },
         Feed {
             url: "https://archlinux.org/feeds/news/".to_string(),
@@ -314,7 +312,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Linux Gaming".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "♨".to_string(),
+            icon: "󰒔".to_string(),
         },
         Feed {
             url: "https://www.reddit.com/r/EpicGamesPC/.rss".to_string(),
@@ -322,7 +320,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Epic Games".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "⚡".to_string(),
+            icon: "".to_string(),
         },
 
         // --- Türkiye Önde Gelen Teknoloji ve Bilim Sayfaları ---
@@ -390,7 +388,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Global Tech".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "📰".to_string(),
+            icon: "".to_string(),
         },
         Feed {
             url: "https://www.theverge.com/rss/index.xml".to_string(),
@@ -398,7 +396,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Global Tech".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "⚡".to_string(),
+            icon: "".to_string(),
         },
         Feed {
             url: "https://techcrunch.com/feed/".to_string(),
@@ -406,7 +404,7 @@ fn default_feeds() -> Vec<Feed> {
             category: "Global Tech".to_string(),
             enabled: true,
             last_fetched: "Pending".to_string(),
-            icon: "🚀".to_string(),
+            icon: "".to_string(),
         },
         Feed {
             url: "https://blog.rust-lang.org/feed.xml".to_string(),
@@ -419,106 +417,258 @@ fn default_feeds() -> Vec<Feed> {
     ]
 }
 
-const O_NOFOLLOW: i32 = 0o400000;
 const MAX_FEEDS_COUNT: usize = 50;
 const MAX_ARTICLES_COUNT: usize = 200;
 const MAX_STATE_FILE_BYTES: u64 = 524288; // 512 KiB
 
 static STAGING_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-struct TempFileGuard<'a> {
-    path: &'a std::path::Path,
-    active: bool,
+pub struct DirDescriptor {
+    fd: i32,
 }
 
-impl<'a> Drop for TempFileGuard<'a> {
+impl DirDescriptor {
+    pub fn as_raw_fd(&self) -> i32 {
+        self.fd
+    }
+}
+
+impl Drop for DirDescriptor {
     fn drop(&mut self) {
-        if self.active {
-            let _ = fs::remove_file(self.path);
+        if self.fd >= 0 {
+            unsafe {
+                libc::close(self.fd);
+            }
         }
     }
+}
+
+fn open_secure_dir_descriptor(
+    dir_path: &std::path::Path,
+    create_if_missing: bool,
+) -> Option<DirDescriptor> {
+    use std::ffi::CString;
+    use std::path::Component;
+
+    let mut current_fd = unsafe {
+        libc::open(
+            c"/".as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if current_fd < 0 {
+        return None;
+    }
+
+    let current_uid = unsafe { libc::getuid() };
+    let mut owned_by_user = false;
+
+    for component in dir_path.components() {
+        match component {
+            Component::RootDir => continue,
+            Component::Normal(seg) => {
+                let seg_str = seg.to_str()?;
+                let seg_c = CString::new(seg_str).ok()?;
+
+                let mut next_fd = unsafe {
+                    libc::openat(
+                        current_fd,
+                        seg_c.as_ptr(),
+                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    )
+                };
+
+                if next_fd < 0 && create_if_missing {
+                    let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                    if errno == libc::ENOENT {
+                        let mk_res = unsafe { libc::mkdirat(current_fd, seg_c.as_ptr(), 0o700) };
+                        if mk_res == 0
+                            || std::io::Error::last_os_error().raw_os_error()
+                                == Some(libc::EEXIST)
+                        {
+                            next_fd = unsafe {
+                                libc::openat(
+                                    current_fd,
+                                    seg_c.as_ptr(),
+                                    libc::O_RDONLY
+                                        | libc::O_DIRECTORY
+                                        | libc::O_NOFOLLOW
+                                        | libc::O_CLOEXEC,
+                                )
+                            };
+                        }
+                    }
+                }
+
+                if next_fd < 0 {
+                    unsafe {
+                        libc::close(current_fd);
+                    }
+                    return None;
+                }
+
+                let mut stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
+                let stat_res = unsafe { libc::fstat(next_fd, stat_buf.as_mut_ptr()) };
+                if stat_res != 0 {
+                    unsafe {
+                        libc::close(next_fd);
+                        libc::close(current_fd);
+                    }
+                    return None;
+                }
+                let stat = unsafe { stat_buf.assume_init() };
+
+                // Ensure it is a directory
+                if (stat.st_mode & libc::S_IFMT) != libc::S_IFDIR {
+                    unsafe {
+                        libc::close(next_fd);
+                        libc::close(current_fd);
+                    }
+                    return None;
+                }
+
+                // If we entered a user-owned directory, all descendants MUST be owned by current user
+                if stat.st_uid == current_uid {
+                    owned_by_user = true;
+                } else if owned_by_user {
+                    // Child inside user tree not owned by current user
+                    unsafe {
+                        libc::close(next_fd);
+                        libc::close(current_fd);
+                    }
+                    return None;
+                } else if stat.st_uid != 0 {
+                    // System components before user directory must be root-owned
+                    unsafe {
+                        libc::close(next_fd);
+                        libc::close(current_fd);
+                    }
+                    return None;
+                }
+
+                unsafe {
+                    libc::close(current_fd);
+                }
+                current_fd = next_fd;
+            }
+            _ => {
+                unsafe {
+                    libc::close(current_fd);
+                }
+                return None;
+            }
+        }
+    }
+
+    // On the verified directory descriptor, enforce mode 0700 via fchmod if owned by user
+    if owned_by_user {
+        let mut stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
+        if unsafe { libc::fstat(current_fd, stat_buf.as_mut_ptr()) } == 0 {
+            let stat = unsafe { stat_buf.assume_init() };
+            if (stat.st_mode & 0o777) != 0o700 {
+                unsafe {
+                    libc::fchmod(current_fd, 0o700);
+                }
+            }
+        }
+    }
+
+    Some(DirDescriptor { fd: current_fd })
 }
 
 fn read_secure_state_file(path: &std::path::Path, max_bytes: u64) -> Option<String> {
-    use std::os::unix::fs::MetadataExt;
+    use std::ffi::CString;
+    use std::os::unix::io::FromRawFd;
 
     let parent = path.parent()?;
-    if let Ok(parent_meta) = fs::symlink_metadata(parent) {
-        // SAFETY: getuid is a POSIX libc function without side effects
-        let current_uid = unsafe { getuid() };
-        if parent_meta.file_type().is_symlink()
-            || !parent_meta.file_type().is_dir()
-            || parent_meta.uid() != current_uid
-        {
-            return None;
+    let file_name = path.file_name()?.to_str()?;
+    let file_name_c = CString::new(file_name).ok()?;
+
+    let dir = open_secure_dir_descriptor(parent, false)?;
+    let dir_fd = dir.as_raw_fd();
+    let current_uid = unsafe { libc::getuid() };
+
+    let fd = unsafe {
+        libc::openat(
+            dir_fd,
+            file_name_c.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0,
+        )
+    };
+    if fd < 0 {
+        return None;
+    }
+
+    let mut stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
+    if unsafe { libc::fstat(fd, stat_buf.as_mut_ptr()) } != 0 {
+        unsafe {
+            libc::close(fd);
         }
-    } else {
         return None;
     }
+    let stat = unsafe { stat_buf.assume_init() };
 
-    // SAFETY: getuid is a POSIX libc function without side effects
-    let current_uid = unsafe { getuid() };
-    if let Ok(meta) = fs::symlink_metadata(path) {
-        if meta.file_type().is_symlink() || !meta.file_type().is_file() || meta.uid() != current_uid {
-            return None;
+    if (stat.st_mode & libc::S_IFMT) != libc::S_IFREG || stat.st_uid != current_uid {
+        unsafe {
+            libc::close(fd);
         }
-    } else {
         return None;
     }
 
-    let mut opts = fs::OpenOptions::new();
-    opts.read(true).custom_flags(O_NOFOLLOW);
-
-    let f = opts.open(path).ok()?;
-    let meta = f.metadata().ok()?;
-    if !meta.file_type().is_file() || meta.uid() != current_uid {
-        return None;
-    }
-
+    let file = unsafe { fs::File::from_raw_fd(fd) };
     let mut content = String::new();
-    f.take(max_bytes).read_to_string(&mut content).ok()?;
+    file.take(max_bytes)
+        .read_to_string(&mut content)
+        .ok()?;
+
     Some(content)
 }
 
 fn write_secure_state_file(path: &std::path::Path, content: &str) {
-    use std::io::Write;
-    use std::os::unix::fs::MetadataExt;
+    use std::ffi::CString;
     use std::sync::atomic::Ordering;
 
     let parent = match path.parent() {
         Some(p) => p,
         None => return,
     };
-
-    if !parent.exists() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
-
-    let parent_meta = match fs::symlink_metadata(parent) {
-        Ok(m) => m,
+    let file_name = match path.file_name().and_then(|f| f.to_str()) {
+        Some(f) => f,
+        None => return,
+    };
+    let target_name_c = match CString::new(file_name) {
+        Ok(c) => c,
         Err(_) => return,
     };
 
-    // SAFETY: getuid is a POSIX libc function without side effects
-    let current_uid = unsafe { getuid() };
-    if parent_meta.file_type().is_symlink()
-        || !parent_meta.file_type().is_dir()
-        || parent_meta.uid() != current_uid
-    {
-        return;
-    }
+    let dir = match open_secure_dir_descriptor(parent, true) {
+        Some(d) => d,
+        None => return,
+    };
+    let dir_fd = dir.as_raw_fd();
+    let current_uid = unsafe { libc::getuid() };
 
-    // If destination already exists, verify it is a regular file owned by current user
-    if let Ok(meta) = fs::symlink_metadata(path) {
-        if meta.file_type().is_symlink() || !meta.file_type().is_file() || meta.uid() != current_uid {
+    // If destination already exists, inspect via fstatat with AT_SYMLINK_NOFOLLOW
+    let mut target_stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
+    let stat_res = unsafe {
+        libc::fstatat(
+            dir_fd,
+            target_name_c.as_ptr(),
+            target_stat_buf.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if stat_res == 0 {
+        let stat = unsafe { target_stat_buf.assume_init() };
+        if (stat.st_mode & libc::S_IFMT) != libc::S_IFREG || stat.st_uid != current_uid {
             return;
         }
     }
 
     let pid = std::process::id();
-    let mut created_file = None;
-    let mut tmp_path_buf = PathBuf::new();
+    let mut created_fd = -1;
+    let mut chosen_tmp_name = None;
 
     for _ in 0..10 {
         let nanos = std::time::SystemTime::now()
@@ -526,62 +676,151 @@ fn write_secure_state_file(path: &std::path::Path, content: &str) {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let seq = STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let candidate = parent.join(format!(".tmp_state_{}_{}_{}.json", pid, nanos, seq));
+        let candidate_str = format!(".tmp_state_{}_{}_{}.json", pid, nanos, seq);
+        let candidate_c = match CString::new(candidate_str.clone()) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
-        let mut opts = fs::OpenOptions::new();
-        opts.write(true)
-            .create_new(true)
-            .mode(0o600)
-            .custom_flags(O_NOFOLLOW);
+        let fd = unsafe {
+            libc::openat(
+                dir_fd,
+                candidate_c.as_ptr(),
+                libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
 
-        match opts.open(&candidate) {
-            Ok(f) => {
-                tmp_path_buf = candidate;
-                created_file = Some(f);
-                break;
+        if fd >= 0 {
+            created_fd = fd;
+            chosen_tmp_name = Some(candidate_c);
+            break;
+        } else {
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if errno == libc::EEXIST {
+                continue;
+            } else {
+                return;
             }
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(_) => return,
         }
     }
 
-    let mut tmp_file = match created_file {
-        Some(f) => f,
-        None => return,
-    };
+    if created_fd < 0 || chosen_tmp_name.is_none() {
+        return;
+    }
+    let tmp_name_c = chosen_tmp_name.unwrap();
 
-    let mut guard = TempFileGuard {
-        path: &tmp_path_buf,
+    struct FdCleanupGuard {
+        dir_fd: i32,
+        tmp_name: CString,
+        fd: i32,
+        active: bool,
+    }
+    impl Drop for FdCleanupGuard {
+        fn drop(&mut self) {
+            if self.fd >= 0 {
+                unsafe {
+                    libc::close(self.fd);
+                }
+            }
+            if self.active {
+                unsafe {
+                    libc::unlinkat(self.dir_fd, self.tmp_name.as_ptr(), 0);
+                }
+            }
+        }
+    }
+
+    let mut guard = FdCleanupGuard {
+        dir_fd,
+        tmp_name: tmp_name_c.clone(),
+        fd: created_fd,
         active: true,
     };
 
-    let _ = tmp_file.set_permissions(fs::Permissions::from_mode(0o600));
-
-    if tmp_file.write_all(content.as_bytes()).is_err() {
+    // Verify metadata on newly created descriptor
+    let mut tmp_stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
+    if unsafe { libc::fstat(created_fd, tmp_stat_buf.as_mut_ptr()) } != 0 {
         return;
     }
-
-    if tmp_file.sync_all().is_err() {
+    let tmp_stat = unsafe { tmp_stat_buf.assume_init() };
+    if (tmp_stat.st_mode & libc::S_IFMT) != libc::S_IFREG || tmp_stat.st_uid != current_uid {
         return;
     }
+    if (tmp_stat.st_mode & 0o777) != 0o600 {
+        unsafe {
+            libc::fchmod(created_fd, 0o600);
+        }
+    }
 
-    if let Ok(meta) = tmp_file.metadata() {
-        if meta.len() != content.len() as u64 {
+    // Write content through open descriptor
+    let bytes = content.as_bytes();
+    let mut written = 0;
+    while written < bytes.len() {
+        let res = unsafe {
+            libc::write(
+                created_fd,
+                bytes[written..].as_ptr() as *const _,
+                bytes.len() - written,
+            )
+        };
+        if res <= 0 {
             return;
         }
+        written += res as usize;
+    }
+
+    if unsafe { libc::fsync(created_fd) } != 0 {
+        return;
+    }
+
+    // Re-verify target via fstatat before rename
+    let mut recheck_stat_buf = std::mem::MaybeUninit::<libc::stat>::uninit();
+    let recheck_res = unsafe {
+        libc::fstatat(
+            dir_fd,
+            target_name_c.as_ptr(),
+            recheck_stat_buf.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if recheck_res == 0 {
+        let stat = unsafe { recheck_stat_buf.assume_init() };
+        if (stat.st_mode & libc::S_IFMT) != libc::S_IFREG || stat.st_uid != current_uid {
+            return;
+        }
+    }
+
+    // Atomically rename temporary file over target relative to dir_fd
+    let rename_res = unsafe {
+        libc::renameat2(
+            dir_fd,
+            tmp_name_c.as_ptr(),
+            dir_fd,
+            target_name_c.as_ptr(),
+            0,
+        )
+    };
+
+    let rename_ok = if rename_res == 0 {
+        true
     } else {
-        return;
-    }
-
-    // Re-verify destination before rename
-    if let Ok(meta) = fs::symlink_metadata(path) {
-        if meta.file_type().is_symlink() || !meta.file_type().is_file() || meta.uid() != current_uid {
-            return;
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        if errno == libc::ENOSYS {
+            unsafe {
+                libc::renameat(
+                    dir_fd,
+                    tmp_name_c.as_ptr(),
+                    dir_fd,
+                    target_name_c.as_ptr(),
+                ) == 0
+            }
+        } else {
+            false
         }
-    }
+    };
 
-    drop(tmp_file);
-    if fs::rename(&tmp_path_buf, path).is_ok() {
+    if rename_ok {
         guard.active = false;
     }
 }
@@ -1462,7 +1701,7 @@ mod tests {
             category: "Global Tech".to_string(),
             enabled: true,
             last_fetched: "Never".to_string(),
-            icon: "⚡".to_string(),
+            icon: "".to_string(),
         };
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
@@ -1621,5 +1860,35 @@ mod tests {
 
         let _ = fs::remove_file(&oversized_file);
         let _ = fs::remove_dir(&tmp_dir);
+    }
+
+    #[test]
+    fn test_descriptor_bound_ancestor_symlink_rejection() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let base_dir = std::env::temp_dir().join(format!("omarss_test_ancestor_symlink_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base_dir);
+        fs::create_dir_all(&base_dir).unwrap();
+
+        let real_dir = base_dir.join("real_dir");
+        fs::create_dir_all(&real_dir).unwrap();
+        let _ = fs::set_permissions(&real_dir, fs::Permissions::from_mode(0o777));
+
+        let symlink_dir = base_dir.join("symlink_dir");
+        std::os::unix::fs::symlink(&real_dir, &symlink_dir).unwrap();
+
+        // Attempting to write a state file through a path that contains a symlinked ancestor must be rejected
+        let target = symlink_dir.join("feeds.json");
+        write_secure_state_file(&target, r#"{"test":"rejected"}"#);
+
+        // Target must not exist
+        assert!(!target.exists());
+        assert!(!real_dir.join("feeds.json").exists());
+
+        // And real_dir permissions must NOT have been changed by chmod
+        let meta = fs::metadata(&real_dir).unwrap();
+        assert_eq!(meta.mode() & 0o777, 0o777, "Planted symlink must never trigger chmod on target");
+
+        let _ = fs::remove_dir_all(&base_dir);
     }
 }
