@@ -24,7 +24,7 @@ Panel {
   property string selectedRegion: "all" // "all", "tr", "global"
   property bool isRefreshing: false
   property bool compactMode: false
-  readonly property string fontFamily: (root.bar && root.bar.fontFamily) ? root.bar.fontFamily : ((typeof Style !== "undefined" && Style.font && Style.font.family) ? Style.font.family : "JetBrainsMono Nerd Font")
+  readonly property string fontFamily: (root.bar && root.bar.fontFamily) ? root.bar.fontFamily : ((typeof Style !== "undefined" && Style.font && Style.font.family) ? Style.font.family : "JetBrainsMono Nerd Font, JetBrains Mono, monospace")
 
   function resolveEnginePath() {
     return Qt.resolvedUrl("omarss-engine").toString().replace(/^file:\/\//, "")
