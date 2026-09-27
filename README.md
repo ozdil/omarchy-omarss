@@ -1,5 +1,7 @@
 # OmaRSS - Native RSS and Atom Feed Hub for Omarchy Linux
 
+[![Omarchy Verified Plugin](https://img.shields.io/badge/Omarchy-Verified_Plugin-22c55e?style=for-the-badge&logo=omarchy)](https://github.com/ozdil)
+
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-Support_Development-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/ozdil)
 
 Lightweight RSS and Atom feed reader and desktop notification hub for Omarchy Linux written in Rust.
