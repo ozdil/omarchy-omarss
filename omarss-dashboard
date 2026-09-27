@@ -33,14 +33,28 @@ if [[ "${OMARSS_ENV_SANITIZED:-}" != "1" ]]; then
         /bin/bash -p "$0" "$@"
 fi
 
-# Prefer native Quickshell UI if available
-if [[ "${1:-}" != "--cli" ]] && [[ -x "/usr/bin/quickshell" ]]; then
-    if /usr/bin/quickshell ipc -p /usr/share/omarchy/shell call ozdil.omarss toggle >/dev/null 2>&1; then
-        exit 0
-    fi
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve trusted quickshell binary
+QUICKSHELL_BIN=""
+if [[ -x /usr/bin/quickshell ]]; then
+    QUICKSHELL_BIN="/usr/bin/quickshell"
+elif [[ -x /usr/local/bin/quickshell ]]; then
+    QUICKSHELL_BIN="/usr/local/bin/quickshell"
+elif [[ -x "${HOME}/.local/bin/quickshell" ]]; then
+    QUICKSHELL_BIN="${HOME}/.local/bin/quickshell"
 fi
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Prefer native Quickshell standalone UI if available
+if [[ "${1:-}" != "--cli" && -n "${QUICKSHELL_BIN}" ]]; then
+    if "${QUICKSHELL_BIN}" ipc call ozdil.omarss toggle >/dev/null 2>&1; then
+        exit 0
+    fi
+    QML_SHELL="${DIR}/qml/shell.qml"
+    if [[ -f "${QML_SHELL}" ]]; then
+        exec "${QUICKSHELL_BIN}" -p "${QML_SHELL}"
+    fi
+fi
 BIN="${DIR}/omarss-engine"
 
 # Resolve absolute trusted tool paths

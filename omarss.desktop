@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OmaRSS
+GenericName=RSS & Atom Feed Reader
+Comment=Zero-Trust local RSS & Atom feed reader for Omarchy Linux
+Exec=omarss-dashboard
+Icon=application-rss+xml
+Terminal=false
+Categories=Network;News;Feed;
+Keywords=rss;atom;feed;reader;news;syndication;omarchy;
