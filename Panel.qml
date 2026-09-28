@@ -310,7 +310,7 @@ Panel {
 
             PanelActionButton {
               iconText: root.compactMode ? "" : ""
-              tooltipText: root.compactMode ? "Detaylı Kart Görünümü" : "Kompakt Liste Görünümü"
+              tooltipText: root.compactMode ? "Detailed Card View" : "Compact List View"
               onClicked: root.compactMode = !root.compactMode
             }
 
@@ -479,11 +479,11 @@ Panel {
 
           Repeater {
             model: [
-              { id: "all", label: "Tümü", count: root.getCountForRegion("all") },
+              { id: "all", label: "All", count: root.getCountForRegion("all") },
               { id: "linux", label: "Linux", count: root.getCountForRegion("linux") },
               { id: "gaming", label: "Gaming", count: root.getCountForRegion("gaming") },
-              { id: "tr", label: "Türkiye", count: root.getCountForRegion("tr") },
-              { id: "global", label: "Dünya", count: root.getCountForRegion("global") }
+              { id: "tr", label: "Turkey", count: root.getCountForRegion("tr") },
+              { id: "global", label: "World", count: root.getCountForRegion("global") }
             ]
 
             delegate: BorderSurface {
