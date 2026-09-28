@@ -164,10 +164,7 @@ Panel {
     }
   }
 
-  Process {
-    id: openWindowProc
-    command: ["omarss-dashboard"]
-  }
+
 
   Timer {
     interval: 60000
@@ -309,14 +306,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(6)
 
-            PanelActionButton {
-              iconText: "\uf2d0"
-              tooltipText: "Open Standalone Reader Window"
-              onClicked: {
-                root.close()
-                openWindowProc.running = true
-              }
-            }
+
 
             PanelActionButton {
               iconText: root.compactMode ? "" : ""
