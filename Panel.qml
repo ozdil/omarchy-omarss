@@ -24,6 +24,10 @@ Panel {
   property string selectedRegion: "all" // "all", "tr", "global"
   property bool isRefreshing: false
   property bool compactMode: false
+  property bool showAboutModal: false
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color dim: Qt.darker(foreground, 1.45)
+  readonly property color accent: Color.accent
   readonly property string fontFamily: (root.bar && root.bar.fontFamily) ? root.bar.fontFamily : ((typeof Style !== "undefined" && Style.font && Style.font.family) ? Style.font.family : "JetBrainsMono Nerd Font, JetBrains Mono, monospace")
 
   function resolveEnginePath() {
@@ -190,7 +194,7 @@ Panel {
     bar: root.bar
     text: ""
     useActiveColor: false
-    foreground: root.unreadArticles > 0 ? "#22c55e" : (root.bar ? root.bar.foreground : Color.foreground)
+    foreground: root.bar ? root.bar.foreground : Color.foreground
     tooltipText: "OmaRSS Feed Reader" + (root.unreadArticles > 0 ? ("\n" + root.unreadArticles + " unread article" + (root.unreadArticles > 1 ? "s" : "")) : "\nAll feeds caught up")
     onPressed: function(b) {
       root.toggle()
@@ -203,33 +207,41 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(480))
     contentHeight: panel.fittedContentHeight(headerColumn.implicitHeight + scrollContent.implicitHeight + Style.space(16), Style.space(640))
 
-    Item {
-      id: panelContainer
+    PanelKeyCatcher {
+      id: keyCatcher
       anchors.fill: parent
-      focus: true
-
-      Keys.onPressed: function(event) {
-        if (newFeedInput && newFeedInput.activeFocus) return;
+      onCloseRequested: {
+        if (root.showAboutModal) {
+          root.showAboutModal = false
+        } else {
+          root.close()
+        }
+      }
+      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onMoveRequested: function(dx, dy) {
         if (!scrollArea.contentItem) return;
-        var step = Style.space(220);
-        if (event.key === Qt.Key_PageDown || (event.key === Qt.Key_Space && !(event.modifiers & Qt.ShiftModifier))) {
-          scrollArea.contentItem.contentY = Math.min(
-            scrollArea.contentItem.contentHeight - scrollArea.height,
-            scrollArea.contentItem.contentY + step
-          );
-          event.accepted = true;
-        } else if (event.key === Qt.Key_PageUp || (event.key === Qt.Key_Space && (event.modifiers & Qt.ShiftModifier))) {
-          scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentY - step);
-          event.accepted = true;
-        } else if (event.key === Qt.Key_Home) {
-          scrollArea.contentItem.contentY = 0;
-          event.accepted = true;
-        } else if (event.key === Qt.Key_End) {
-          scrollArea.contentItem.contentY = Math.max(0, scrollArea.contentItem.contentHeight - scrollArea.height);
-          event.accepted = true;
+        var step = Style.space(80) * dy;
+        scrollArea.contentItem.contentY = Math.max(0, Math.min(scrollArea.contentItem.contentHeight - scrollArea.height, scrollArea.contentItem.contentY + step));
+      }
+      onTextKey: function(t) {
+        if (t === "r" || t === "R") {
+          root.refreshFeeds()
+        } else if (t === "a" || t === "A") {
+          root.showAboutModal = !root.showAboutModal
+        } else if (t === "m" || t === "M") {
+          root.markAllAsRead()
+        } else if (t === "1") {
+          root.activeTab = 0
+        } else if (t === "2") {
+          root.activeTab = 1
+        } else if (t === "3") {
+          root.activeTab = 2
+        } else if (t === "c" || t === "C") {
+          root.compactMode = !root.compactMode
         }
       }
 
@@ -264,7 +276,7 @@ Panel {
             id: heroIcon
             textFormat: Text.PlainText
             text: ""
-            color: root.unreadArticles > 0 ? "#22c55e" : (root.bar ? root.bar.foreground : Color.foreground)
+            color: root.bar ? root.bar.foreground : Color.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.display
             anchors.left: parent.left
@@ -292,7 +304,7 @@ Panel {
             Text {
               textFormat: Text.PlainText
               text: (root.isRefreshing ? "REFRESHING FEEDS..." : (root.unreadArticles > 0 ? (root.unreadArticles + " UNREAD ARTICLES") : "ALL FEEDS CAUGHT UP")).toUpperCase()
-              color: root.unreadArticles > 0 ? "#22c55e" : Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.4)
+              color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               font.bold: true
@@ -306,7 +318,11 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(6)
 
-
+            PanelActionButton {
+              iconText: "󰋽"
+              tooltipText: "About & Imprint"
+              onClicked: root.showAboutModal = !root.showAboutModal
+            }
 
             PanelActionButton {
               iconText: root.compactMode ? "" : ""
@@ -571,7 +587,7 @@ Panel {
                 anchors.horizontalCenter: parent.horizontalCenter
                 textFormat: Text.PlainText
                 text: "✓"
-                color: "#22c55e"
+                color: Color.accent
                 font.pixelSize: Style.font.display
               }
 
@@ -753,7 +769,7 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   text: art && art.is_read ? "○" : "●"
-                  color: art && art.is_read ? Color.muted : "#22c55e"
+                  color: art && art.is_read ? Color.muted : Color.accent
                   font.pixelSize: Style.font.caption
                   Layout.alignment: Qt.AlignVCenter
                 }
@@ -1026,6 +1042,90 @@ Panel {
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
           font.bold: true
+        }
+      }
+    }
+
+    // About & Imprint Modal Overlay
+    Rectangle {
+      id: aboutOverlay
+      anchors.fill: parent
+      visible: root.showAboutModal
+      color: Qt.rgba(0.05, 0.05, 0.07, 0.96)
+      z: 99
+
+      MouseArea {
+        anchors.fill: parent
+        // Block underlying clicks
+      }
+
+      Column {
+        anchors.centerIn: parent
+        width: parent.width - Style.space(40)
+        spacing: Style.space(12)
+
+        Row {
+          width: parent.width
+          Item {
+            width: parent.width - closeAboutBtn.implicitWidth
+            implicitHeight: aboutTitleText.implicitHeight
+            Text {
+              id: aboutTitleText
+              text: "OmaRSS"
+              color: root.bar ? root.bar.foreground : Color.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+          }
+
+          Button {
+            id: closeAboutBtn
+            text: "✕"
+            bordered: true
+            foreground: root.bar ? root.bar.foreground : Color.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            onClicked: root.showAboutModal = false
+          }
+        }
+
+        Text {
+          text: "Version: 1.1.0\nDeveloper: Ozan Ozdil (@ozdil)\nLicense: MIT\nLightweight, Atomic & Tag-Filtered RSS/Atom Feed Reader"
+          color: root.bar ? root.bar.foreground : Color.foreground
+          opacity: 0.7
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          lineHeight: 1.3
+        }
+
+        PanelSeparator {
+          width: parent.width
+          foreground: root.bar ? root.bar.foreground : Color.foreground
+        }
+
+        Button {
+          width: parent.width
+          text: "GitHub / Contact"
+          iconText: "󰊤"
+          bordered: true
+          foreground: root.bar ? root.bar.foreground : Color.foreground
+          accent: Color.accent
+          fontFamily: root.fontFamily
+          fontSize: Style.font.caption
+          onClicked: Qt.openUrlExternally("https://github.com/ozdil")
+        }
+
+        Button {
+          width: parent.width
+          text: "Buy Me a Coffee"
+          iconText: "󰅖"
+          bordered: true
+          foreground: "#000000"
+          color: "#FFDD00"
+          fontFamily: root.fontFamily
+          fontSize: Style.font.caption
+          onClicked: Qt.openUrlExternally("https://buymeacoffee.com/ozdil")
         }
       }
     }
