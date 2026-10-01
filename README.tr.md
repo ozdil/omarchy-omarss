@@ -3,6 +3,8 @@
 [![Omarchy Verified Plugin](https://img.shields.io/badge/Omarchy-Verified_Plugin-22c55e?style=for-the-badge&logo=omarchy)](https://github.com/ozdil)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-Support_Development-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/ozdil)
 
+![OmaRSS Preview](preview.png)
+
 Omarchy Linux için Rust ile yazılmış ultra hafif, sıfır gecikmeli RSS ve Atom akış okuyucu ve masaüstü bildirim merkezi.
 
 Geliştirici: Ozan Özdil (ozdil)  
