@@ -1,6 +1,6 @@
 # Maintainer: Ozan Özdil <ozan@pm.me>
 pkgname=omarchy-omarss
-pkgver=1.3.0
+pkgver=1.3.1
 pkgrel=1
 pkgdesc="Native, lightweight RSS & Atom feed reader and notification hub for Omarchy Linux written in Rust"
 arch=('x86_64')
