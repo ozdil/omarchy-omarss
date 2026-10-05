@@ -76,6 +76,9 @@ QtObject {
         var acc = dict["accent"] || dict["color4"] || dict["color6"] || "#b8b8b8"
         var sel = dict["selection"] || dict["selection_background"] || ""
         var mut = dict["muted"] || dict["color8"] || ""
+        // Parse hex strings into color objects; raw strings have no .r/.g/.b.
+        var fgC = Qt.color(fg)
+        var accC = Qt.color(acc)
 
         root.bgBase = base
 
@@ -84,21 +87,21 @@ QtObject {
             root.bgSurface = dict["lighter_background"] || (sel ? sel : Qt.lighter(base, 1.3))
             root.bgCard = (sel && sel !== base) ? sel : Qt.lighter(base, 1.5)
             root.bgCardHover = Qt.lighter(root.bgCard, 1.15)
-            root.border = mut ? mut : Qt.rgba(fg.r, fg.g, fg.b, 0.2)
-            root.borderLight = Qt.rgba(acc.r, acc.g, acc.b, 0.35)
+            root.border = mut ? mut : Qt.rgba(fgC.r, fgC.g, fgC.b, 0.2)
+            root.borderLight = Qt.rgba(accC.r, accC.g, accC.b, 0.35)
             root.textMain = dict["bright_foreground"] || fg
-            root.textMuted = dict["light_foreground"] || mut || Qt.rgba(fg.r, fg.g, fg.b, 0.65)
-            root.textDim = dict["dark_foreground"] || dict["color8"] || Qt.rgba(fg.r, fg.g, fg.b, 0.4)
+            root.textMuted = Qt.rgba(fgC.r, fgC.g, fgC.b, 0.85)
+            root.textDim = Qt.rgba(fgC.r, fgC.g, fgC.b, 0.68)
         } else {
             root.bgDark = Qt.darker(base, 1.08)
             root.bgSurface = Qt.lighter(base, 1.02)
             root.bgCard = Qt.darker(base, 1.04)
             root.bgCardHover = Qt.darker(root.bgCard, 1.06)
-            root.border = mut ? mut : Qt.rgba(fg.r, fg.g, fg.b, 0.2)
-            root.borderLight = Qt.rgba(acc.r, acc.g, acc.b, 0.35)
+            root.border = mut ? mut : Qt.rgba(fgC.r, fgC.g, fgC.b, 0.2)
+            root.borderLight = Qt.rgba(accC.r, accC.g, accC.b, 0.35)
             root.textMain = dict["bright_foreground"] || fg
-            root.textMuted = dict["light_foreground"] || mut || Qt.rgba(fg.r, fg.g, fg.b, 0.65)
-            root.textDim = Qt.rgba(fg.r, fg.g, fg.b, 0.4)
+            root.textMuted = Qt.rgba(fgC.r, fgC.g, fgC.b, 0.85)
+            root.textDim = Qt.rgba(fgC.r, fgC.g, fgC.b, 0.68)
         }
 
         root.accent = acc

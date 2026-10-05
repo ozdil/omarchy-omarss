@@ -48,8 +48,19 @@ Panel {
     } catch(e) {}
   }
   readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color dim: Qt.darker(foreground, 1.45)
   readonly property color accent: Color.accent
+  // Theme-agnostic semantic text tiers. Derived from the theme foreground via
+  // alpha so contrast against the popup background holds on both dark and
+  // light themes (root.textSecondary maps to a surface tone on many dark themes and
+  // becomes unreadable on the popup background).
+  readonly property color textPrimary: foreground
+  readonly property color textSecondary: Util.alpha(foreground, 0.85)
+  readonly property color textTertiary: Util.alpha(foreground, 0.68)
+  readonly property color dim: textSecondary
+  readonly property color badgeBackground: Util.alpha(foreground, 0.08)
+  readonly property color overlayBackground: Util.alpha(Color.popups.background, 0.97)
+  // Readable text color on top of an accent fill, chosen by accent luminance.
+  readonly property color onAccent: (0.2126 * accent.r + 0.7152 * accent.g + 0.0722 * accent.b) > 0.55 ? "#111111" : "#f5f5f5"
   readonly property string fontFamily: (root.bar && root.bar.fontFamily) ? root.bar.fontFamily : ((typeof Style !== "undefined" && Style.font && Style.font.family) ? Style.font.family : "JetBrainsMono Nerd Font, JetBrains Mono, monospace")
 
   function resolveEnginePath() {
@@ -416,7 +427,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 text: "Unread"
-                color: root.activeTab === 0 ? Color.popups.background : Color.foreground
+                color: root.activeTab === 0 ? root.onAccent : Color.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: root.activeTab === 0
@@ -427,7 +438,7 @@ Panel {
                 width: badgeText0.implicitWidth + Style.space(8)
                 height: Style.space(16)
                 radius: Style.cornerRadius
-                color: root.activeTab === 0 ? Qt.rgba(0,0,0,0.2) : Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
+                color: root.activeTab === 0 ? Util.alpha(root.onAccent, 0.18) : Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
                 border.color: root.activeTab === 0 ? "transparent" : Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.4)
                 border.width: 1
                 anchors.verticalCenter: parent.verticalCenter
@@ -437,7 +448,7 @@ Panel {
                   anchors.centerIn: parent
                   textFormat: Text.PlainText
                   text: String(root.unreadArticles)
-                  color: root.activeTab === 0 ? (root.bar ? root.bar.background : Color.background) : (root.bar ? root.bar.foreground : Color.foreground)
+                  color: root.activeTab === 0 ? root.onAccent : (root.bar ? root.bar.foreground : Color.foreground)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption - 1
                   font.bold: true
@@ -468,7 +479,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 text: "All"
-                color: root.activeTab === 1 ? Color.popups.background : Color.foreground
+                color: root.activeTab === 1 ? root.onAccent : Color.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: root.activeTab === 1
@@ -478,7 +489,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 text: "(" + root.totalArticles + ")"
-                color: root.activeTab === 1 ? Color.popups.background : Color.muted
+                color: root.activeTab === 1 ? root.onAccent : root.textSecondary
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 anchors.verticalCenter: parent.verticalCenter
@@ -508,7 +519,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 text: "Feeds"
-                color: root.activeTab === 2 ? Color.popups.background : Color.foreground
+                color: root.activeTab === 2 ? root.onAccent : Color.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 font.bold: root.activeTab === 2
@@ -518,7 +529,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 text: "(" + root.totalFeeds + ")"
-                color: root.activeTab === 2 ? Color.popups.background : Color.muted
+                color: root.activeTab === 2 ? root.onAccent : root.textSecondary
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 anchors.verticalCenter: parent.verticalCenter
@@ -581,7 +592,7 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   text: "(" + modelData.count + ")"
-                  color: pillSurface.active ? Color.accent : Color.muted
+                  color: pillSurface.active ? Color.accent : root.textSecondary
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption - 1
                   anchors.verticalCenter: parent.verticalCenter
@@ -650,7 +661,7 @@ Panel {
                 anchors.horizontalCenter: parent.horizontalCenter
                 textFormat: Text.PlainText
                 text: root.activeTab === 0 ? "All feeds have been read." : "Add RSS feeds in the Feeds tab."
-                color: Color.muted
+                color: root.textSecondary
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
               }
@@ -718,7 +729,7 @@ Panel {
                     implicitHeight: Style.space(18)
                     implicitWidth: artCatText.implicitWidth + Style.space(8)
                     radius: Style.cornerRadius
-                    color: Qt.rgba(0, 0, 0, 0.08)
+                    color: root.badgeBackground
                     visible: art && art.category && art.category.length > 0
 
                     Text {
@@ -726,7 +737,7 @@ Panel {
                       anchors.centerIn: parent
                       textFormat: Text.PlainText
                       text: art ? String(art.category) : ""
-                      color: Color.muted
+                      color: root.textSecondary
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption - 2
                     }
@@ -735,7 +746,7 @@ Panel {
                   Text {
                     textFormat: Text.PlainText
                     text: art ? String(art.date) : ""
-                    color: Color.muted
+                    color: root.textTertiary
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                   }
@@ -747,7 +758,7 @@ Panel {
                     implicitHeight: Style.space(18)
                     implicitWidth: statusText.implicitWidth + Style.space(8)
                     radius: Style.cornerRadius
-                    color: art && art.is_read ? Qt.rgba(0,0,0,0.1) : Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
+                    color: art && art.is_read ? root.badgeBackground : Style.selectedFillFor(root.bar ? root.bar.foreground : Color.foreground, Color.accent)
                     border.color: art && art.is_read ? "transparent" : Qt.darker(root.bar ? root.bar.foreground : Color.foreground, 1.4)
                     border.width: 1
 
@@ -756,7 +767,7 @@ Panel {
                       anchors.centerIn: parent
                       textFormat: Text.PlainText
                       text: art && art.is_read ? "READ" : "● NEW"
-                      color: art && art.is_read ? Color.muted : (root.bar ? root.bar.foreground : Color.foreground)
+                      color: art && art.is_read ? root.textSecondary : (root.bar ? root.bar.foreground : Color.foreground)
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption - 1
                       font.bold: true
@@ -793,7 +804,7 @@ Panel {
                   width: parent.width
                   textFormat: Text.PlainText
                   text: art ? String(art.excerpt) : ""
-                  color: Color.muted
+                  color: root.textSecondary
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   wrapMode: Text.Wrap
@@ -814,7 +825,7 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   text: art && art.is_read ? "○" : "●"
-                  color: art && art.is_read ? Color.muted : Color.accent
+                  color: art && art.is_read ? root.textSecondary : Color.accent
                   font.pixelSize: Style.font.caption
                   Layout.alignment: Qt.AlignVCenter
                 }
@@ -853,7 +864,7 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   text: art ? String(art.date) : ""
-                  color: Color.muted
+                  color: root.textTertiary
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption - 1
                   Layout.alignment: Qt.AlignVCenter
@@ -862,7 +873,7 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   text: art && art.is_read ? "✓" : "○"
-                  color: mouseCompactRead.containsMouse ? Color.accent : Color.muted
+                  color: mouseCompactRead.containsMouse ? Color.accent : root.textSecondary
                   font.pixelSize: Style.font.caption
                   Layout.alignment: Qt.AlignVCenter
 
@@ -970,7 +981,7 @@ Panel {
                   text: feedItem ? String(feedItem.icon || "") : ""
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.title
-                  color: feedItem && feedItem.enabled ? Color.accent : Color.muted
+                  color: feedItem && feedItem.enabled ? Color.accent : root.textSecondary
                   Layout.preferredWidth: Style.space(24)
                   horizontalAlignment: Text.AlignHCenter
                 }
@@ -1002,7 +1013,7 @@ Panel {
                         anchors.centerIn: parent
                         textFormat: Text.PlainText
                         text: feedItem ? String(feedItem.category) : ""
-                        color: Color.muted
+                        color: root.textSecondary
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.caption - 2
                         font.bold: true
@@ -1014,7 +1025,7 @@ Panel {
                     width: parent.width
                     textFormat: Text.PlainText
                     text: feedItem ? String(feedItem.url) : ""
-                    color: Color.muted
+                    color: root.textTertiary
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption - 1
                     elide: Text.ElideMiddle
@@ -1096,7 +1107,7 @@ Panel {
       id: aboutOverlay
       anchors.fill: parent
       visible: root.showAboutModal
-      color: Qt.rgba(0.05, 0.05, 0.07, 0.96)
+      color: root.overlayBackground
       z: 99
 
       MouseArea {
