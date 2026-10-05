@@ -393,7 +393,7 @@ Panel {
             }
 
             PanelActionButton {
-              iconText: "✓"
+              iconText: "\uf00c"
               tooltipText: "Mark All Read"
               onClicked: root.markAllAsRead()
             }
@@ -642,7 +642,8 @@ Panel {
               Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 textFormat: Text.PlainText
-                text: "✓"
+                text: "\uf00c"
+                font.family: root.fontFamily
                 color: Color.accent
                 font.pixelSize: Style.font.display
               }
@@ -766,7 +767,7 @@ Panel {
                       id: statusText
                       anchors.centerIn: parent
                       textFormat: Text.PlainText
-                      text: art && art.is_read ? "READ" : "● NEW"
+                      text: art && art.is_read ? "READ" : "\uf111 NEW"
                       color: art && art.is_read ? root.textSecondary : (root.bar ? root.bar.foreground : Color.foreground)
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption - 1
@@ -824,7 +825,8 @@ Panel {
 
                 Text {
                   textFormat: Text.PlainText
-                  text: art && art.is_read ? "○" : "●"
+                  text: art && art.is_read ? "\uf10c" : "\uf111"
+                  font.family: root.fontFamily
                   color: art && art.is_read ? root.textSecondary : Color.accent
                   font.pixelSize: Style.font.caption
                   Layout.alignment: Qt.AlignVCenter
@@ -872,7 +874,8 @@ Panel {
 
                 Text {
                   textFormat: Text.PlainText
-                  text: art && art.is_read ? "✓" : "○"
+                  text: art && art.is_read ? "\uf00c" : "\uf10c"
+                  font.family: root.fontFamily
                   color: mouseCompactRead.containsMouse ? Color.accent : root.textSecondary
                   font.pixelSize: Style.font.caption
                   Layout.alignment: Qt.AlignVCenter
@@ -1043,7 +1046,7 @@ Panel {
                 }
 
                 PanelActionButton {
-                  iconText: "✕"
+                  iconText: "\uf00d"
                   tooltipText: "Unsubscribe Feed"
                   hoverColor: Color.urgent
                   onClicked: {
@@ -1164,7 +1167,7 @@ Panel {
 
           Button {
             id: closeAboutBtn
-            text: "✕"
+            text: "\uf00d"
             bordered: true
             foreground: root.bar ? root.bar.foreground : Color.foreground
             fontFamily: root.fontFamily
